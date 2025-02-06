@@ -44,8 +44,15 @@ static inline s32 Clz32(s32 n) { return n == 0 ? 32 : __builtin_clz(n); };
 static inline s64 Clz64(s64 n) { return n == 0 ? 64 : __builtin_clzll(n); };
 
 static inline s32 Boi(s64 n)      { return 64-Clz64(n); }
-static inline s32 NextPow2(s64 n) { return 1llu << Boi(n); }
 static inline s32 PopCount(s32 n) { return __builtin_popcount(n); }
 static inline s32 PopCount(s64 n) { return __builtin_popcountll(n); }
+static inline s64 NextPow2(s64 n) { return 1llu << Boi(n); }
+
+static inline s64 RoundPow2(s64 n) {
+	if (PopCount(n) == 1)
+		return n;
+
+	return NextPow2(n);
+}
 
 #endif // MATH_H

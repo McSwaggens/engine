@@ -4,14 +4,27 @@
 #include "general.h"
 #include "vector.h"
 
+#define GLFW_INCLUDE_VULKAN
+#include <GLFW/glfw3.h>
+
 struct Window {
-	void Init();
+	GLFWwindow* glfw_window;
+
+	void Destroy();
+	void Update();
 
 	Vector2 GetPosition();
 	Vector2 GetSize();
 
-	void SetPosition(u32 x, u32 y);
-	void SetSize(u32 width, u32 height);
+	void SetPosition(Vector2 pos);
+	void SetSize(Vector2 size);
+
+	void Show();
+	void Hide();
+
+	bool ShouldClose();
 };
+
+static Window CreateWindow();
 
 #endif // WINDOW_H_INCLUDED

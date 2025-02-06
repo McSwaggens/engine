@@ -15,11 +15,11 @@ typedef   float float32;
 typedef   double float64;
 
 typedef char byte;
-#define null ((void*)0)
+#define null nullptr
 
-static void ZeroMemory(byte* p, u64 size) { __builtin_memset(p, 0, size); }
-static void MoveMemory(byte* dest, byte* src, u64 size) { __builtin_memmove(dest, src, size); }
-static void CopyMemory(byte* dest, byte* src, u64 size) { __builtin_memcpy(dest, src, size); }
-static bool CompareMemory(byte* a, byte* b, u64 size) { return __builtin_memcmp(a, b, size) == 0; }
+static void ZeroMemory(void* p, u64 size) { __builtin_memset(p, 0, size); }
+static void MoveMemory(void* dest, void* src, u64 size) { __builtin_memmove(dest, src, size); }
+static void CopyMemory(void* dest, void* src, u64 size) { __builtin_memcpy(dest, src, size); }
+static bool CompareMemory(void* a, void* b, u64 size) { return __builtin_memcmp(a, b, size) == 0; }
 
 #endif // GENERAL_H
