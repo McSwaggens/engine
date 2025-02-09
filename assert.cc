@@ -4,6 +4,7 @@
 
 static void Assert(bool b) {
 	if (!b) {
+		Print("Assert tripped.\n");
 	}
 }
 

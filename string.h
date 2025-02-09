@@ -2,6 +2,7 @@
 #define STRING_H
 
 #include "alloc.h"
+#include "assert.h"
 
 struct String {
 	char* data   = 0;
@@ -54,5 +55,15 @@ struct String {
 		data[0] = c;
 	}
 };
+
+static u64 CStringLength(const char* str) {
+	const char* p = str;
+	while (*p) p++;
+	return p - str;
+}
+
+static String FromCString(const char* str) {
+	return String(str, CStringLength(str), 0);
+}
 
 #endif // STRING_H
