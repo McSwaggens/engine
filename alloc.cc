@@ -55,8 +55,14 @@ static void* AllocMemory(u64 size) {
 	return pool->Take(size);
 }
 
-static void FreeMemory(byte* p);
-static byte* ReAllocMemory(byte* p, u64 old_size, u64 new_size);
-static byte* CopyAllocMemory(byte* p, u64 size);
+static void FreeMemory(void* p, u64 size) {
+}
 
+static void* ReAllocMemory(void* p, u64 old_size, u64 new_size) {
+	return null;
+}
+
+static void* CopyAllocMemory(void* p, u64 size) {
+	return null;
+}
 

@@ -12,6 +12,7 @@ struct Window {
 
 	void Destroy();
 	void Update();
+	void SwapBuffers();
 
 	Vector2 GetPosition();
 	Vector2 GetSize();

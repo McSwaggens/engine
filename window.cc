@@ -36,6 +36,7 @@ Vector2 Window::GetSize() {
 void Window::SetPosition(Vector2 pos) { glfwSetWindowPos(glfw_window, pos.x, pos.y); }
 void Window::SetSize(Vector2 size)    { glfwSetWindowSize(glfw_window, size.x, size.y); }
 bool Window::ShouldClose() { return glfwWindowShouldClose(glfw_window); }
+void Window::SwapBuffers() { glfwSwapBuffers(glfw_window); }
 void Window::Show() { glfwShowWindow(glfw_window); }
 void Window::Hide() { glfwHideWindow(glfw_window); }
 

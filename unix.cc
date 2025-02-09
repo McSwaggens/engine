@@ -13,13 +13,3 @@ static void FreePages(void* p, u64 size) {
 	munmap(p, size);
 }
 
-static FileHandle OpenFile(String path) {
-	char cpath[path.length+1];
-	CopyMemory(cpath, (char*)path.data, path.length);
-	cpath[path.length] = 0;
-	return open(cpath, 0);
-}
-
-static void CloseFile(FileHandle file) {
-	close(file);
-}
