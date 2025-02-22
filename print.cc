@@ -25,7 +25,7 @@ static void Write(OutputBuffer* buffer, s64 n) {
 
 static void Write(OutputBuffer* buffer, void* p) { Write(buffer, Hex((u64)p)); }
 
-static void WriteHex(OutputBuffer* buffer, u64 n) {
+static void WriteBase16(OutputBuffer* buffer, u64 n) {
 	const u8 length_table[65] = {
 		16, 16, 16, 16,
 		15, 15, 15, 15,
@@ -59,7 +59,7 @@ static void WriteHex(OutputBuffer* buffer, u64 n) {
 	buffer->Write(character_buffer, digits+1);
 }
 
-static void GenericWriteBin(OutputBuffer* buffer, u64 n) {
+static void WriteBase2(OutputBuffer* buffer, u64 n) {
 	if (!n) {
 		buffer->Write("0b", 2);
 		return;
@@ -97,9 +97,9 @@ static void GenericWriteBin(OutputBuffer* buffer, u64 n) {
 
 static void Write(OutputBuffer* buffer, IntFormat format) {
 	switch (format.base) {
-		case BASE_2:  GenericWriteBin(buffer, format.value); break;
-		case BASE_10: Write(buffer, format.value); break;
-		case BASE_16: WriteHex(buffer, format.value); break;
+		case BASE_2:  WriteBase2(buffer, format.value);  break;
+		case BASE_10: Write(buffer, format.value);       break;
+		case BASE_16: WriteBase16(buffer, format.value); break;
 	}
 }
 

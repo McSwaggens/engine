@@ -21,4 +21,6 @@ static const FileHandle STDERR = 2;
 static void* AllocPages(u64 size);
 static void  FreePages(void* p, u64 size);
 
+static void ExitProgram();
+
 #endif // OS_H

@@ -33,6 +33,26 @@ static f32 FMod(f32 x, f32 y)       { return __builtin_fmod(x, y);     }
 static f32 Max(f32 a, f32 b)        { return __builtin_fmax(a, b);     }
 static f32 Min(f32 a, f32 b)        { return __builtin_fmin(a, b);     }
 
+static u64 Max(u64 a, u64 b) { return a >= b ? a : b; };
+static u32 Max(u32 a, u32 b) { return a >= b ? a : b; };
+static u16 Max(u16 a, u16 b) { return a >= b ? a : b; };
+static u8  Max(u8  a, u8  b) { return a >= b ? a : b; };
+
+static s64 Max(s64 a, s64 b) { return a >= b ? a : b; };
+static s32 Max(s32 a, s32 b) { return a >= b ? a : b; };
+static s16 Max(s16 a, s16 b) { return a >= b ? a : b; };
+static s8  Max(s8  a, s8  b) { return a >= b ? a : b; };
+
+static u64 Min(u64 a, u64 b) { return a <= b ? a : b; };
+static u32 Min(u32 a, u32 b) { return a <= b ? a : b; };
+static u16 Min(u16 a, u16 b) { return a <= b ? a : b; };
+static u8  Min(u8  a, u8  b) { return a <= b ? a : b; };
+
+static s64 Min(s64 a, s64 b) { return a <= b ? a : b; };
+static s32 Min(s32 a, s32 b) { return a <= b ? a : b; };
+static s16 Min(s16 a, s16 b) { return a <= b ? a : b; };
+static s8  Min(s8  a, s8  b) { return a <= b ? a : b; };
+
 static inline s8  Ctz8(s8 n)   { return n == 0 ? 8  : __builtin_ctz((u32)n)-24; };
 static inline s16 Ctz16(s16 n) { return n == 0 ? 16 : __builtin_ctz((u32)n)-16; };
 static inline s32 Ctz32(s32 n) { return n == 0 ? 32 : __builtin_ctz(n); };
@@ -44,15 +64,29 @@ static inline s32 Clz32(s32 n) { return n == 0 ? 32 : __builtin_clz(n); };
 static inline s64 Clz64(s64 n) { return n == 0 ? 64 : __builtin_clzll(n); };
 
 static inline s32 Boi(s64 n)      { return 64-Clz64(n); }
-static inline s32 PopCount(s32 n) { return __builtin_popcount(n); }
-static inline s32 PopCount(s64 n) { return __builtin_popcountll(n); }
+
+static inline s32 PopCount32(s32 n) { return __builtin_popcount(n); }
+static inline s32 PopCount64(s64 n) { return __builtin_popcountll(n); }
+
+static inline u64 RemoveRightBit32(u32 n) { return (n - 1) & n; }
+static inline u64 RemoveRightBit64(u64 n) { return (n - 1) & n; }
+
+static inline u32 RightMostBit32(u32 n)   { return 1 << Ctz32(n); }
+static inline u64 RightMostBit64(u64 n)   { return 1llu << Ctz64(n); }
+
+static inline u64 LeftMostBit64(u64 n)    { return 1llu << (Clz64(n)-1); }
+
 static inline s64 NextPow2(s64 n) { return 1llu << Boi(n); }
 
 static inline s64 RoundPow2(s64 n) {
-	if (PopCount(n) == 1)
+	if (PopCount64(n) <= 1)
 		return n;
 
 	return NextPow2(n);
+}
+
+static u64 BitsBetween(u64 left, u64 right) {
+	return (-1llu << left) ^ (-1llu << right);
 }
 
 #endif // MATH_H

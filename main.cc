@@ -5,6 +5,8 @@
 #include "vector.h"
 #include "quaternion.h"
 
+#include "list.h"
+
 #include "assert.cc"
 #include "alloc.cc"
 #include "unix.cc"
@@ -58,6 +60,17 @@ int main(int argc, char** argv) {
 	Window window = CreateWindow();
 
 	InitVulkan();
+
+	List<u32> nums;
+	for (u32 i = 0; i < 1<<12; i++) {
+		Print("Pushing % to nums\n", i);
+		standard_output_buffer.Flush();
+		nums.Add(i);
+	}
+
+	for (u32 i = 0; i < nums.count; i++) {
+		Print("nums[%] = %\n", i, nums[i]);
+	}
 
 	while (!window.ShouldClose()) {
 		window.Update();

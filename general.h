@@ -22,4 +22,6 @@ static void MoveMemory(void* dest, void* src, u64 size) { __builtin_memmove(dest
 static void CopyMemory(void* dest, const void* src, u64 size) { __builtin_memcpy(dest, src, size); }
 static bool CompareMemory(const void* a, const void* b, u64 size) { return __builtin_memcmp(a, b, size) == 0; }
 
+#define Trap() __builtin_debugtrap()
+
 #endif // GENERAL_H
