@@ -1,10 +1,13 @@
 #include "assert.h"
-
 #include "print.h"
+#include "os.h"
 
-static void Assert(bool b) {
-	if (!b) {
-		Print("Assert tripped.\n");
-	}
+static void AssertImpl(bool b, const char* str, AssertSourceLocation srcloc) {
+	if (b) return;
+
+	Print("%:%:%: error: Assert tripped in function %: %\n", FromCString(srcloc.file), srcloc.line, srcloc.column, FromCString(srcloc.function), FromCString(str));
+	standard_output_buffer.Flush();
+	Trap();
+	ExitProgram();
 }
 
