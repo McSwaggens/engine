@@ -2,6 +2,7 @@
 
 static bool InitWindowSystem() {
 	if (!glfwInit()) return false;
+	Assert(glfwVulkanSupported());
 	return true;
 }
 

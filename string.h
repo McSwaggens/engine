@@ -14,6 +14,12 @@ struct String {
 	String(const char (&str)[N]) : data(const_cast<char*>(str)), length(N-1), capacity(0) { }
 	explicit String(const char* str, u32 length, u32 capacity) : data(const_cast<char*>(str)), length(length), capacity(capacity) { }
 
+	const char* begin() { return data; }
+	const char* end() { return data + length; }
+
+	const char* Begin() { return data; }
+	const char* End() { return data + length; }
+
 	void Free() {
 		Assert(capacity || !length);
 		FreeMemory(data, capacity); 
@@ -54,6 +60,36 @@ struct String {
 		MoveMemory(data, data+1, length);
 		data[0] = c;
 	}
+
+	bool StartsWith(String str) {
+		if (length < str.length)
+			return false;
+
+		if (!CompareMemory(data, str.data, str.length))
+			return false;
+
+		return true;
+	}
+
+	bool EndsWith(String str) {
+		if (length < str.length)
+			return false;
+
+		if (!CompareMemory(End() - str.length, str.data, str.length))
+			return false;
+
+		return true;
+	}
+
+	bool operator ==(String str) {
+		if (length != str.length) return false;
+		if (!CompareMemory(data, str.data, length)) return false;
+		return true;
+	}
+
+	bool operator !=(String str) {
+		return *this == str;
+	}
 };
 
 static u64 CStringLength(const char* str) {
@@ -62,7 +98,7 @@ static u64 CStringLength(const char* str) {
 	return p - str;
 }
 
-static String FromCString(const char* str) {
+static String CString(const char* str) {
 	return String(str, CStringLength(str), 0);
 }
 

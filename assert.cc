@@ -5,7 +5,7 @@
 static void AssertImpl(bool b, const char* str, AssertSourceLocation srcloc) {
 	if (b) return;
 
-	Print("%:%:%: error: Assert tripped in function %: %\n", FromCString(srcloc.file), srcloc.line, srcloc.column, FromCString(srcloc.function), FromCString(str));
+	Print("%:%:%: error: Assert tripped in function %: %\n", CString(srcloc.file), srcloc.line, srcloc.column, CString(srcloc.function), CString(str));
 	standard_output_buffer.Flush();
 	Trap();
 	ExitProgram();

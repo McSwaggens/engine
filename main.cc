@@ -17,15 +17,58 @@
 #include "vk_helper.h"
 
 static VkInstance vk;
+static List<VkLayerProperties> vk_layers;
+
+static const char* vk_enabled_layers[] = {
+	"VK_LAYER_KHRONOS_validation",
+};
+
+void QueryValidationLayers() {
+	u32 layer_count;
+	vkEnumerateInstanceLayerProperties(&layer_count, null);
+
+	vk_layers.AssureCount(layer_count);
+	vkEnumerateInstanceLayerProperties(&layer_count, vk_layers.elements);
+
+	for (auto& layer : vk_layers) {
+		Print("layer: %\n", CString(layer.layerName));
+	}
+}
+
+static bool IsValidationLayerPresent(String str) {
+	for (auto& layer : vk_layers) {
+		if (CString(layer.layerName) != str)
+			continue;
+
+		return true;
+	}
+
+	return false;
+}
+
+static List<const char*> QueryGlfwRequiredExtensions() {
+	List<const char*> result;
+	u32 count = 0;
+	result.elements = glfwGetRequiredInstanceExtensions(&count);
+	result.count = count;
+	result.capacity = 0;
+	return result;
+}
 
 static void InitVulkan() {
-	const char** glfw_exts = null;
-	u32 glfw_ext_count = 0;
-	glfw_exts = glfwGetRequiredInstanceExtensions(&glfw_ext_count);
+	List<const char*> required_extensions;
+	List<const char*> glfw_required_extensions = QueryGlfwRequiredExtensions();
 
-	Print("glfw_ext_count = %\n", glfw_ext_count);
-	for (u32 i = 0; i < glfw_ext_count; i++)
-		Print("Extension: %\n", FromCString(glfw_exts[i]));
+	required_extensions.Add(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+	required_extensions.Add(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+
+	Print("Required Extensions:\n");
+	for (auto ext : required_extensions)
+		Print("\t%\n", CString(ext));
+
+	Print("Glfw Required Extensions:\n");
+	for (auto ext : glfw_required_extensions)
+		Print("\t%\n", CString(ext));
 
 	VkApplicationInfo app_info = {
 		.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
@@ -36,17 +79,20 @@ static void InitVulkan() {
 		.apiVersion = VK_API_VERSION_1_4,
 	};
 
-	char* extensions[4096] = {
-		VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME,
-	};
+	QueryValidationLayers();
+	for (auto layer_name : vk_enabled_layers)
+		Assert(IsValidationLayerPresent(CString(layer_name)));
 
 	VkInstanceCreateInfo inst_info = {
 		.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
 		.flags = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR,
 		.pApplicationInfo = &app_info,
-		.enabledExtensionCount = 1,
-		.ppEnabledExtensionNames = extensions,
-		.enabledLayerCount = 0,
+
+		.ppEnabledExtensionNames = required_extensions.elements,
+		.enabledExtensionCount   = required_extensions.count,
+
+		.ppEnabledLayerNames = vk_enabled_layers,
+		.enabledLayerCount   = 1,
 	};
 
 	VkResult result = vkCreateInstance(&inst_info, null, &vk);
@@ -61,24 +107,13 @@ int main(int argc, char** argv) {
 
 	InitVulkan();
 
-	List<u32> nums;
-	for (u32 i = 0; i < 1<<12; i++) {
-		Print("Pushing % to nums\n", i);
-		standard_output_buffer.Flush();
-		nums.Add(i);
-	}
-
-	for (u32 i = 0; i < nums.count; i++) {
-		Print("nums[%] = %\n", i, nums[i]);
-	}
-
 	while (!window.ShouldClose()) {
 		window.Update();
 
-
 		standard_output_buffer.Flush();
 	}
 
+	vkDestroyInstance(vk, null);
 	window.Destroy();
 	glfwTerminate();
 
