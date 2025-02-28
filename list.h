@@ -61,7 +61,7 @@ struct List {
 	}
 
 	void Free() {
-		Free(elements, sizeof(T) * count);
+		FreeMemory(elements, sizeof(T) * count);
 	}
 
 
