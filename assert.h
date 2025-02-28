@@ -18,10 +18,10 @@ struct AssertSourceLocation {
 #define Assert(x) AssertImpl(x, #x)
 
 static void AssertImpl(bool b, const char* str, AssertSourceLocation srcloc = {
-	.function = __builtin_FUNCTION(),
-	.file     = __builtin_FILE(),
 	.line     = __builtin_LINE(),
 	.column   = __builtin_COLUMN(),
+	.file     = __builtin_FILE(),
+	.function = __builtin_FUNCTION(),
 });
 
 #endif // ASSERT_H
