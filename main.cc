@@ -18,6 +18,7 @@
 
 static VkInstance vk;
 static List<VkLayerProperties> vk_layers;
+static List<VkPhysicalDevice> physical_devices;
 
 static const char* vk_enabled_layers[] = {
 	"VK_LAYER_KHRONOS_validation",
@@ -30,9 +31,10 @@ void QueryValidationLayers() {
 	vk_layers.AssureCount(layer_count);
 	vkEnumerateInstanceLayerProperties(&layer_count, vk_layers.elements);
 
-	for (auto& layer : vk_layers) {
-		Print("layer: %\n", CString(layer.layerName));
-	}
+	Print("Layers:\n");
+	for (auto layer : vk_layers)
+		Print("\t%\n", CString(layer.layerName));
+
 }
 
 static bool IsValidationLayerPresent(String str) {
@@ -60,7 +62,7 @@ static void InitVulkan() {
 	List<const char*> glfw_required_extensions = QueryGlfwRequiredExtensions();
 
 	required_extensions.Add(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-	required_extensions.Add(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+	// required_extensions.Add(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
 
 	Print("Required Extensions:\n");
 	for (auto ext : required_extensions)
@@ -80,12 +82,13 @@ static void InitVulkan() {
 	};
 
 	QueryValidationLayers();
+
 	for (auto layer_name : vk_enabled_layers)
 		Assert(IsValidationLayerPresent(CString(layer_name)));
 
 	VkInstanceCreateInfo inst_info = {
 		.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-		.flags = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR,
+		// .flags = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR,
 		.pApplicationInfo = &app_info,
 
 		.ppEnabledExtensionNames = required_extensions.elements,
@@ -98,6 +101,45 @@ static void InitVulkan() {
 	VkResult result = vkCreateInstance(&inst_info, null, &vk);
 	Print("result = %\n", ToString(result));
 	Assert(result == VK_SUCCESS);
+
+	required_extensions.Free();
+}
+
+static List<VkPhysicalDevice> QueryPhysicalDevices() {
+	List<VkPhysicalDevice> result;
+	u32 count = 0;
+	vkEnumeratePhysicalDevices(vk, &count, null);
+	result.AssureCount(count);
+	vkEnumeratePhysicalDevices(vk, &count, result.elements);
+	result.count = count;
+	return result;
+}
+
+static bool IsPhysicalDeviceGood(VkPhysicalDevice pdev) {
+	VkPhysicalDeviceProperties props;
+	vkGetPhysicalDeviceProperties(pdev, &props);
+
+	// @Todo: Score devices and pick the one with the highest score.
+	// Also need to make sure the device selected has the nessesary features present.
+	// This is good enough for now.
+
+	if (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU || props.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) {
+		Print("Using Physical Device: %\n", CString(props.deviceName));
+		return true;
+	}
+
+	return false;
+}
+
+static VkPhysicalDevice FindPhysicalDevice() {
+	physical_devices = QueryPhysicalDevices();
+
+	for (VkPhysicalDevice pdev : physical_devices)
+		if (IsPhysicalDeviceGood(pdev))
+			return pdev;
+
+	Assert(false);
+	return null;
 }
 
 int main(int argc, char** argv) {
@@ -106,6 +148,7 @@ int main(int argc, char** argv) {
 	Window window = CreateWindow();
 
 	InitVulkan();
+	FindPhysicalDevice();
 
 	while (!window.ShouldClose()) {
 		window.Update();
