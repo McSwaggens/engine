@@ -14,12 +14,17 @@ static Window CreateWindow() {
 }
 
 void Window::Destroy() {
+	vkDestroySurfaceKHR(vk, surface, null);
 	glfwDestroyWindow(glfw_window);
 	glfw_window = null;
 }
 
 void Window::Update() {
 	glfwPollEvents();
+}
+
+bool Window::InitSurface() {
+	return glfwCreateWindowSurface(vk, glfw_window, null, &surface);
 }
 
 Vector2 Window::GetPosition() {

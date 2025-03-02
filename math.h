@@ -65,8 +65,7 @@ static inline s64 Clz64(s64 n) { return n == 0 ? 64 : __builtin_clzll(n); };
 
 static inline s32 Boi(s64 n)      { return 64-Clz64(n); }
 
-static inline s32 PopCount32(s32 n) { return __builtin_popcount(n); }
-static inline s32 PopCount64(s64 n) { return __builtin_popcountll(n); }
+static inline s32 PopCount(u64 n) { return __builtin_popcountll(n); }
 
 static inline u64 RemoveRightBit32(u32 n) { return (n - 1) & n; }
 static inline u64 RemoveRightBit64(u64 n) { return (n - 1) & n; }
@@ -79,7 +78,7 @@ static inline u64 LeftMostBit64(u64 n)    { return 1llu << (Clz64(n)-1); }
 static inline s64 NextPow2(s64 n) { return 1llu << Boi(n); }
 
 static inline s64 RoundPow2(s64 n) {
-	if (PopCount64(n) <= 1)
+	if (PopCount(n) <= 1)
 		return n;
 
 	return NextPow2(n);

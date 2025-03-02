@@ -1,4 +1,9 @@
 #include "general.h"
+
+#define GLFW_INCLUDE_VULKAN
+#include <GLFW/glfw3.h>
+static VkInstance vk;
+
 #include "math.h"
 #include "window.h"
 
@@ -16,9 +21,30 @@
 
 #include "vk_helper.h"
 
-static VkInstance vk;
+struct QueueFamilyTable {
+	u32 graphics = -1;
+	u32 compute  = -1;
+	u32 transfer = -1;
+	u32 present  = -1;
+
+	bool IsComplete() {
+		if (graphics == -1) return false;
+		if (compute  == -1) return false;
+		if (transfer == -1) return false;
+		if (present  == -1) return false;
+		return true;
+	}
+};
+
 static List<VkLayerProperties> vk_layers;
 static List<VkPhysicalDevice> physical_devices;
+static VkPhysicalDevice physical_device;
+static VkDevice device;
+static QueueFamilyTable queue_family_table;
+static VkQueue graphics_queue;
+static VkQueue present_queue;
+static VkSurfaceKHR surface;
+static Window window;
 
 static const char* vk_enabled_layers[] = {
 	"VK_LAYER_KHRONOS_validation",
@@ -61,8 +87,12 @@ static void InitVulkan() {
 	List<const char*> required_extensions;
 	List<const char*> glfw_required_extensions = QueryGlfwRequiredExtensions();
 
+	required_extensions.Add(glfw_required_extensions);
 	required_extensions.Add(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-	// required_extensions.Add(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+#ifdef MACOS
+	required_extensions.Add(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+#endif
+
 
 	Print("Required Extensions:\n");
 	for (auto ext : required_extensions)
@@ -88,7 +118,9 @@ static void InitVulkan() {
 
 	VkInstanceCreateInfo inst_info = {
 		.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-		// .flags = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR,
+#ifdef MACOS
+		.flags = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR,
+#endif
 		.pApplicationInfo = &app_info,
 
 		.ppEnabledExtensionNames = required_extensions.elements,
@@ -115,6 +147,40 @@ static List<VkPhysicalDevice> QueryPhysicalDevices() {
 	return result;
 }
 
+static QueueFamilyTable QueryQueueFamilyTable(VkPhysicalDevice pdev) {
+	u32 count;
+	vkGetPhysicalDeviceQueueFamilyProperties(pdev, &count, null);
+
+	VkQueueFamilyProperties queue_props[count];
+	vkGetPhysicalDeviceQueueFamilyProperties(pdev, &count, queue_props);
+
+	QueueFamilyTable result;
+
+	u32 all = VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT;
+	for (u32 i = 0; i < count; i++) {
+		VkQueueFamilyProperties* props = &queue_props[i];
+
+		u32 feature_count = PopCount(props->queueFlags);
+
+		if ((props->queueFlags & VK_QUEUE_GRAPHICS_BIT) && result.graphics != -1)
+			result.graphics = i;
+
+		if ((props->queueFlags & VK_QUEUE_COMPUTE_BIT)  && result.compute  != -1)
+			result.compute = i;
+
+		if ((props->queueFlags & VK_QUEUE_TRANSFER_BIT) && result.transfer != -1)
+			result.transfer = i;
+
+		VkBool32 can_present = false;
+		vkGetPhysicalDeviceSurfaceSupportKHR(pdev, i, window.surface, &can_present);
+
+		if (can_present && result.present != -1)
+			result.present = i;
+	}
+
+	return result;
+}
+
 static bool IsPhysicalDeviceGood(VkPhysicalDevice pdev) {
 	VkPhysicalDeviceProperties props;
 	vkGetPhysicalDeviceProperties(pdev, &props);
@@ -123,12 +189,16 @@ static bool IsPhysicalDeviceGood(VkPhysicalDevice pdev) {
 	// Also need to make sure the device selected has the nessesary features present.
 	// This is good enough for now.
 
-	if (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU || props.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) {
-		Print("Using Physical Device: %\n", CString(props.deviceName));
-		return true;
-	}
+	if (props.deviceType != VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU &&
+		props.deviceType != VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)
+		return false;
 
-	return false;
+	QueueFamilyTable queue_table = QueryQueueFamilyTable(pdev);
+	if (queue_table.IsComplete())
+		return false;
+
+	Print("Using Physical Device: %\n", CString(props.deviceName));
+	return true;
 }
 
 static VkPhysicalDevice FindPhysicalDevice() {
@@ -142,13 +212,56 @@ static VkPhysicalDevice FindPhysicalDevice() {
 	return null;
 }
 
+static VkDevice CreateLogicalDevice(VkPhysicalDevice pdev) {
+	float priority = 1.0;
+	VkDeviceQueueCreateInfo queue_create_info = {
+		.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+		.queueFamilyIndex = queue_family_table.graphics,
+		.queueCount = 1,
+		.pQueuePriorities = &priority,
+	};
+
+	VkPhysicalDeviceFeatures features = { };
+
+	VkDeviceCreateInfo device_create_info = {
+		.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+
+		.pQueueCreateInfos = &queue_create_info,
+		.queueCreateInfoCount = 1,
+
+		.pEnabledFeatures = &features,
+
+		.enabledExtensionCount = 0,
+		.ppEnabledExtensionNames = null,
+
+		.enabledLayerCount = 0,
+	};
+
+	VkDevice dev;
+	VkResult result = vkCreateDevice(pdev, &device_create_info, null, &dev);
+	Assert(result == VK_SUCCESS);
+
+	return dev;
+}
+
+static VkQueue CreateQueue(VkDevice device, u32 family_index) {
+	VkQueue queue;
+	vkGetDeviceQueue(device, family_index, 0, &queue);
+	return queue;
+}
+
 int main(int argc, char** argv) {
 	InitWindowSystem();
 
-	Window window = CreateWindow();
+	window = CreateWindow();
 
 	InitVulkan();
-	FindPhysicalDevice();
+	window.InitSurface();
+	Print("xxx window.surface = %\n", (u64)window.surface);
+
+	physical_device = FindPhysicalDevice();
+	device = CreateLogicalDevice(physical_device);
+	graphics_queue = CreateQueue(device, queue_family_table.graphics);
 
 	while (!window.ShouldClose()) {
 		window.Update();
@@ -156,6 +269,7 @@ int main(int argc, char** argv) {
 		standard_output_buffer.Flush();
 	}
 
+	vkDestroyDevice(device, null);
 	vkDestroyInstance(vk, null);
 	window.Destroy();
 	glfwTerminate();

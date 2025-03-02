@@ -82,7 +82,7 @@ static void GaInsert(u32 index, byte* block, u64 block_size) {
 
 static void GaSplat(byte* block, u64 mask) {
 	u64 m = mask;
-	for (u32 i = 0; i < PopCount64(mask); i++) {
+	for (u32 i = 0; i < PopCount(mask); i++) {
 		u64 pow = Ctz64(m);
 		u64 bit = 1llu << pow;
 		m -= bit;

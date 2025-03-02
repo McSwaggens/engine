@@ -4,15 +4,14 @@
 #include "general.h"
 #include "vector.h"
 
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
-
 struct Window {
 	GLFWwindow* glfw_window;
+	VkSurfaceKHR surface;
 
 	void Destroy();
 	void Update();
 	void SwapBuffers();
+	bool InitSurface();
 
 	Vector2 GetPosition();
 	Vector2 GetSize();
