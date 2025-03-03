@@ -7,6 +7,8 @@ static VkInstance vk;
 #include "math.h"
 #include "window.h"
 
+#define LogVar(var) Print(#var " = %\n", var)
+
 #include "vector.h"
 #include "quaternion.h"
 
@@ -131,7 +133,7 @@ static void InitVulkan() {
 	};
 
 	VkResult result = vkCreateInstance(&inst_info, null, &vk);
-	Print("result = %\n", ToString(result));
+	LogVar(ToString(result));
 	Assert(result == VK_SUCCESS);
 
 	required_extensions.Free();
@@ -162,19 +164,19 @@ static QueueFamilyTable QueryQueueFamilyTable(VkPhysicalDevice pdev) {
 
 		u32 feature_count = PopCount(props->queueFlags);
 
-		if ((props->queueFlags & VK_QUEUE_GRAPHICS_BIT) && result.graphics != -1)
+		if ((props->queueFlags & VK_QUEUE_GRAPHICS_BIT) && result.graphics == -1)
 			result.graphics = i;
 
-		if ((props->queueFlags & VK_QUEUE_COMPUTE_BIT)  && result.compute  != -1)
+		if ((props->queueFlags & VK_QUEUE_COMPUTE_BIT)  && result.compute  == -1)
 			result.compute = i;
 
-		if ((props->queueFlags & VK_QUEUE_TRANSFER_BIT) && result.transfer != -1)
+		if ((props->queueFlags & VK_QUEUE_TRANSFER_BIT) && result.transfer == -1)
 			result.transfer = i;
 
 		VkBool32 can_present = false;
 		vkGetPhysicalDeviceSurfaceSupportKHR(pdev, i, window.surface, &can_present);
 
-		if (can_present && result.present != -1)
+		if (can_present && result.present == -1)
 			result.present = i;
 	}
 
@@ -194,7 +196,7 @@ static bool IsPhysicalDeviceGood(VkPhysicalDevice pdev) {
 		return false;
 
 	QueueFamilyTable queue_table = QueryQueueFamilyTable(pdev);
-	if (queue_table.IsComplete())
+	if (!queue_table.IsComplete())
 		return false;
 
 	Print("Using Physical Device: %\n", CString(props.deviceName));
@@ -214,8 +216,9 @@ static VkPhysicalDevice FindPhysicalDevice() {
 
 static VkDevice CreateLogicalDevice(VkPhysicalDevice pdev) {
 	float priority = 1.0;
+	standard_output_buffer.Flush();
 	VkDeviceQueueCreateInfo queue_create_info = {
-		.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+		.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
 		.queueFamilyIndex = queue_family_table.graphics,
 		.queueCount = 1,
 		.pQueuePriorities = &priority,
@@ -246,7 +249,7 @@ static VkDevice CreateLogicalDevice(VkPhysicalDevice pdev) {
 
 static VkQueue CreateQueue(VkDevice device, u32 family_index) {
 	VkQueue queue;
-	vkGetDeviceQueue(device, family_index, 0, &queue);
+	vkGetDeviceQueue(device, family_index, family_index, &queue);
 	return queue;
 }
 
@@ -257,9 +260,10 @@ int main(int argc, char** argv) {
 
 	InitVulkan();
 	window.InitSurface();
-	Print("xxx window.surface = %\n", (u64)window.surface);
+	LogVar((u64)window.surface);
 
 	physical_device = FindPhysicalDevice();
+	queue_family_table = QueryQueueFamilyTable(physical_device);
 	device = CreateLogicalDevice(physical_device);
 	graphics_queue = CreateQueue(device, queue_family_table.graphics);
 
