@@ -12,12 +12,14 @@ struct GaPool {
 	}
 
 	void PutStack(byte* p, u64 size) {
+	// 	Print("\tPutStack(%, %)", p, size);
 		Assert(IsEmpty());
 		stack_head = p;
 		stack_tail = p + size;
 	}
 
 	void PutLinked(byte* p) {
+	// 	Print("\tPutLinked(%)\n");
 		*(byte**)p = linked_list_head;
 		linked_list_head = p;
 	}
@@ -27,6 +29,7 @@ static GaPool pools[64];
 static u64 pool_map;
 
 static void GaFree(u64 index, void* ptr) {
+	// Print("\tGaFree(%, %)\n", index, ptr);
 	GaPool* pool = &pools[index];
 
 	*(void**)ptr = pool->linked_list_head;
@@ -34,6 +37,7 @@ static void GaFree(u64 index, void* ptr) {
 }
 
 static byte* GaTake(u64 index) {
+	// Print("\tGaTake(%)\n", index);
 	GaPool* pool = &pools[index];
 
 	if (pool->linked_list_head) {
@@ -62,25 +66,30 @@ static void InitGlobalAllocator() {
 }
 
 static void FillPool(u64 index) {
+	// Print("\tFillPool(%)\n", index);
 	GaPool* pool = &pools[index];
 	Assert(pool->IsEmpty());
 	u64 size = 1llu << index;
 	byte* p = (byte*)AllocPages(size);
-	pool_map |= 1llu << index;
 	pool->stack_head = p;
 	pool->stack_tail = p + size;
+	pool_map |= 1llu << index;
 }
 
 static void GaInsert(u32 index, byte* block, u64 block_size) {
+	// Print("\tGaInsert(%, %, %)\n", index, block, block_size);
 	GaPool* pool = &pools[index];
 
 	Assert(pool->IsEmpty());
 
 	pool->stack_head = block;
 	pool->stack_tail = block + block_size;
+
+	pool_map |= 1llu<<index;
 }
 
 static void GaSplat(byte* block, u64 mask) {
+	// Print("\tGaSplat(%, %)\n", block, Bin(mask));
 	u64 m = mask;
 	for (u32 i = 0; i < PopCount(mask); i++) {
 		u64 pow = Ctz64(m);
@@ -89,9 +98,12 @@ static void GaSplat(byte* block, u64 mask) {
 		GaInsert(pow, block, (1llu << pow));
 		block += bit;
 	}
+
+	pool_map |= mask;
 }
 
 static void GaSpill(byte* block, u64 block_size, u64 mask) {
+	// Print("\tGaSpill(%, %, %)\n", block, block_size, Bin(mask));
 	u64 bot_size = block_size - mask;
 
 	GaInsert(Ctz64(mask), block, bot_size);
@@ -99,6 +111,7 @@ static void GaSpill(byte* block, u64 block_size, u64 mask) {
 }
 
 static void* AllocMemory(u64 size) {
+	// Print("AllocMemory(%)\n", size);
 	size = GaNormalizeSize(size);
 	u32 pow = Ctz64(size);
 
@@ -111,7 +124,11 @@ static void* AllocMemory(u64 size) {
 	if (!available_pools)
 		FillPool(Max(pow, 20u) + 4);
 
-	u64 from_pow = Ctz64(pool_map & -pow);
+	u64 from_pow = Ctz64(pool_map & -size);
+	// Print("  pow = %\n", pow);
+	// Print("  pool_map = %\n", Bin(pool_map));
+	// Print("  pool_map & -size = %\n", Bin(pool_map & -size & -4096));
+	// Print("  from_pow = %\n", from_pow);
 	GaSpill(GaTake(from_pow), 1llu << from_pow, BitsBetween(from_pow-1, Max(pow, 12u)));
 
 	if (pow < 12)
@@ -121,12 +138,14 @@ static void* AllocMemory(u64 size) {
 }
 
 static void FreeMemory(void* p, u64 size) {
+	// Print("FreeMemory(%, %)\n", p, size);
 	size = GaNormalizeSize(size);
 	u32 index = Ctz64(size);
 	GaFree(index, p);
 }
 
 static void* ReAllocMemory(void* p, u64 old_size, u64 new_size) {
+	// Print("ReAllocMemory(%, %, %)\n", p, old_size, new_size);
 	u64 old_real_size = old_size;
 
 	old_size = GaNormalizeSize(old_size);
@@ -147,6 +166,7 @@ static void* ReAllocMemory(void* p, u64 old_size, u64 new_size) {
 }
 
 static void* CopyAllocMemory(void* p, u64 size) {
+	// Print("CopyAllocMemory(%, %)\n", p, size);
 	u64 real_size = size;
 
 	size = GaNormalizeSize(size);
