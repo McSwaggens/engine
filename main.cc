@@ -23,6 +23,32 @@ static VkInstance vk;
 
 #include "vk_helper.h"
 
+struct Queue {
+	VkQueue vk;
+	u32 index;
+	u32 family;
+
+	// bool CanPresent(VkPhysicalDevice pdev, VkSurfaceKHR surface) {
+	// }
+};
+
+template<typename T, u32 N>
+struct FixedAllocator {
+	T stack[N];
+	u32 head;
+
+	T* Next() {
+		Assert(head < N);
+		return &stack[head++];
+	}
+
+	T* begin() { return stack; }
+	T* end()   { return stack + head; }
+};
+
+static FixedAllocator<Queue, 32> queues;
+static Queue* general_queue;
+
 struct QueueFamilyTable {
 	u32 graphics = -1;
 	u32 compute  = -1;
@@ -149,6 +175,12 @@ static List<VkPhysicalDevice> QueryPhysicalDevices() {
 	return result;
 }
 
+static bool CanQueueFamilyPresent(VkPhysicalDevice pdev, VkSurfaceKHR surface, u32 family) {
+	VkBool32 can_present = false;
+	vkGetPhysicalDeviceSurfaceSupportKHR(pdev, family, surface, &can_present);
+	return can_present;
+}
+
 static QueueFamilyTable QueryQueueFamilyTable(VkPhysicalDevice pdev) {
 	u32 count;
 	vkGetPhysicalDeviceQueueFamilyProperties(pdev, &count, null);
@@ -173,8 +205,7 @@ static QueueFamilyTable QueryQueueFamilyTable(VkPhysicalDevice pdev) {
 		if ((props->queueFlags & VK_QUEUE_TRANSFER_BIT) && result.transfer == -1)
 			result.transfer = i;
 
-		VkBool32 can_present = false;
-		vkGetPhysicalDeviceSurfaceSupportKHR(pdev, i, window.surface, &can_present);
+		bool can_present = CanQueueFamilyPresent(pdev, window.surface, i);
 
 		if (can_present && result.present == -1)
 			result.present = i;
@@ -247,9 +278,20 @@ static VkDevice CreateLogicalDevice(VkPhysicalDevice pdev) {
 	return dev;
 }
 
-static VkQueue CreateQueue(VkDevice device, u32 family_index) {
-	VkQueue queue;
-	vkGetDeviceQueue(device, family_index, family_index, &queue);
+static Queue* CreateQueue(VkDevice device, u32 family_index) {
+	for (auto& queue : queues)
+		if (queue.family == family_index)
+			return &queue;
+
+	VkQueue vk;
+	vkGetDeviceQueue(device, family_index, family_index, &vk);
+
+	Queue* queue = queues.Next();
+	*queue = {
+		.family = family_index,
+		.vk = vk,
+	};
+
 	return queue;
 }
 
@@ -265,7 +307,7 @@ int main(int argc, char** argv) {
 	physical_device = FindPhysicalDevice();
 	queue_family_table = QueryQueueFamilyTable(physical_device);
 	device = CreateLogicalDevice(physical_device);
-	graphics_queue = CreateQueue(device, queue_family_table.graphics);
+	general_queue = CreateQueue(device, queue_family_table.graphics);
 
 	while (!window.ShouldClose()) {
 		window.Update();

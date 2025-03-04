@@ -21,6 +21,7 @@ static void ZeroMemory(void* p, u64 size) { __builtin_memset(p, 0, size); }
 static void MoveMemory(void* dest, void* src, u64 size) { __builtin_memmove(dest, src, size); }
 static void CopyMemory(void* dest, const void* src, u64 size) { __builtin_memcpy(dest, src, size); }
 static bool CompareMemory(const void* a, const void* b, u64 size) { return __builtin_memcmp(a, b, size) == 0; }
+static void SetMemory(void* p, char c, u32 size) { __builtin_memset(p, c, size); }
 
 #define Trap() __builtin_debugtrap()
 

@@ -28,12 +28,15 @@ struct GaPool {
 static GaPool pools[64];
 static u64 pool_map;
 
-static void GaFree(u64 index, void* ptr) {
-	// Print("\tGaFree(%, %)\n", index, ptr);
+static void GaFree(u64 index, void* p) {
+	// Print("\tGaFree(%, %)\n", index, p);
 	GaPool* pool = &pools[index];
 
-	*(void**)ptr = pool->linked_list_head;
-	pool->linked_list_head = (byte*)ptr;
+	// @todo: Only do this in debug mode.
+	SetMemory(p, 0xCC, index);
+
+	*(void**)p = pool->linked_list_head;
+	pool->linked_list_head = (byte*)p;
 }
 
 static byte* GaTake(u64 index) {
