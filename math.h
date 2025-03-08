@@ -53,6 +53,16 @@ static s32 Min(s32 a, s32 b) { return a <= b ? a : b; };
 static s16 Min(s16 a, s16 b) { return a <= b ? a : b; };
 static s8  Min(s8  a, s8  b) { return a <= b ? a : b; };
 
+static u64 Clamp(u64 n, u64 min, u64 max) { return Min(Max(n, min), max); }
+static u32 Clamp(u32 n, u32 min, u32 max) { return Min(Max(n, min), max); }
+static u16 Clamp(u16 n, u16 min, u16 max) { return Min(Max(n, min), max); }
+static u8  Clamp(u8  n, u8  min, u8  max) { return Min(Max(n, min), max); }
+
+static s64 Clamp(s64 n, s64 min, s64 max) { return Min(Max(n, min), max); }
+static s32 Clamp(s32 n, s32 min, s32 max) { return Min(Max(n, min), max); }
+static s16 Clamp(s16 n, s16 min, s16 max) { return Min(Max(n, min), max); }
+static s8  Clamp(s8  n, s8  min, s8  max) { return Min(Max(n, min), max); }
+
 static inline s8  Ctz8(s8 n)   { return n == 0 ? 8  : __builtin_ctz((u32)n)-24; };
 static inline s16 Ctz16(s16 n) { return n == 0 ? 16 : __builtin_ctz((u32)n)-16; };
 static inline s32 Ctz32(s32 n) { return n == 0 ? 32 : __builtin_ctz(n); };

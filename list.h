@@ -65,6 +65,14 @@ struct List {
 		count++;
 	}
 
+	bool Contains(T value) {
+		for (u32 i = 0; i < count; i++)
+			if (CompareMemory(&elements[i], &value, sizeof(T)))
+				return true;
+
+		return false;
+	}
+
 	void Remove(u32 begin, u32 end) {
 		Assert(begin < end);
 		Assert(end < count);

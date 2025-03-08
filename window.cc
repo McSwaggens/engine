@@ -1,4 +1,5 @@
 #include "window.h"
+	Vector2 GetFrameBufferSize();
 
 static bool InitWindowSystem() {
 	if (!glfwInit()) return false;
@@ -36,6 +37,12 @@ Vector2 Window::GetPosition() {
 Vector2 Window::GetSize() {
 	s32 width, height;
 	glfwGetWindowSize(glfw_window, &width, &height);
+	return Vector2(width, height);
+}
+
+Vector2 Window::GetFrameBufferSize() {
+	s32 width, height;
+	glfwGetFramebufferSize(glfw_window, &width, &height);
 	return Vector2(width, height);
 }
 

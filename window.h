@@ -15,6 +15,7 @@ struct Window {
 
 	Vector2 GetPosition();
 	Vector2 GetSize();
+	Vector2 GetFrameBufferSize();
 
 	void SetPosition(Vector2 pos);
 	void SetSize(Vector2 size);
