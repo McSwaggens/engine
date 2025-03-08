@@ -27,10 +27,92 @@ struct Queue {
 	VkQueue vk;
 	u32 index;
 	u32 family;
-
-	// bool CanPresent(VkPhysicalDevice pdev, VkSurfaceKHR surface) {
-	// }
 };
+
+struct Swapchain {
+	VkSwapchainKHR handle = 0;
+
+	VkSurfaceFormatKHR format = { };
+	VkExtent2D extent = { 0, 0 };
+
+	List<VkImage>     images;
+	List<VkImageView> views;
+
+	void Destroy(VkDevice device) {
+		vkDestroySwapchainKHR(device, handle, null);
+	}
+};
+
+struct SwapchainSupportInfo {
+	VkSurfaceKHR surface;
+	VkSurfaceCapabilitiesKHR capabilities;
+	List<VkSurfaceFormatKHR> formats;
+	List<VkPresentModeKHR>   present_modes;
+
+	VkPresentModeKHR ChoosePresentMode() {
+		if (present_modes.Contains(VK_PRESENT_MODE_MAILBOX_KHR))
+			return VK_PRESENT_MODE_MAILBOX_KHR;
+
+		return VK_PRESENT_MODE_FIFO_KHR;
+	}
+
+	VkSurfaceFormatKHR ChooseFormat() {
+		if (!formats.Contains({ VK_FORMAT_B8G8R8A8_SRGB, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR }))
+			return { VK_FORMAT_B8G8R8A8_SRGB, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR };
+
+		return formats[0];
+	}
+
+	VkExtent2D GetExtent(Window* window) {
+		if (capabilities.currentExtent.width != -1)
+			return capabilities.currentExtent;
+
+		Vector2 fb_size = window->GetFrameBufferSize();
+		return {
+			Clamp((u32)fb_size.x, capabilities.minImageExtent.width,  capabilities.maxImageExtent.width),
+			Clamp((u32)fb_size.y, capabilities.minImageExtent.height, capabilities.maxImageExtent.height),
+		};
+	}
+
+	u32 GetImageCount() {
+		u32 image_count = capabilities.minImageCount + 1;
+
+		if (capabilities.maxImageCount > 0)
+			image_count = Min(image_count, capabilities.maxImageCount);
+
+		return image_count;
+	}
+
+
+	void Free() {
+		formats.Free();
+		present_modes.Free();
+	}
+};
+
+static SwapchainSupportInfo QuerySwapchainSupportInfo(VkPhysicalDevice pdev, VkSurfaceKHR surface) {
+	SwapchainSupportInfo info = {
+		.surface = surface,
+	};
+
+	// Get capabilities.
+	VkResult result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(pdev, surface, &info.capabilities);
+	Assert(result == VK_SUCCESS);
+
+	// Get formats.
+	u32 format_count;
+	vkGetPhysicalDeviceSurfaceFormatsKHR(pdev, surface, &format_count, null);
+	info.formats.AssureCount(format_count);
+	vkGetPhysicalDeviceSurfaceFormatsKHR(pdev, surface, &format_count, info.formats.elements);
+
+	// Get present modes.
+	u32 present_mode_count;
+	vkGetPhysicalDeviceSurfacePresentModesKHR(pdev, surface, &present_mode_count, null);
+	info.present_modes.AssureCount(present_mode_count);
+	vkGetPhysicalDeviceSurfacePresentModesKHR(pdev, surface, &present_mode_count, info.present_modes.elements);
+
+	return info;
+}
 
 template<typename T, u32 N>
 struct FixedAllocator {
@@ -70,8 +152,7 @@ static FixedAllocator<Queue, 32> queues;
 static Queue* general_queue;
 static QueueFamilyTable queue_family_table;
 static Window window;
-static VkSwapchainKHR swapchain;
-static List<VkImage> swapchain_images;
+Swapchain swapchain;
 
 static const char* vk_enabled_layers[] = {
 	"VK_LAYER_KHRONOS_validation",
@@ -212,77 +293,6 @@ static QueueFamilyTable QueryQueueFamilyTable(VkPhysicalDevice pdev) {
 	return result;
 }
 
-struct SwapchainSupportInfo {
-	VkSurfaceKHR surface;
-	VkSurfaceCapabilitiesKHR capabilities;
-	List<VkSurfaceFormatKHR> formats;
-	List<VkPresentModeKHR>   present_modes;
-
-	VkPresentModeKHR ChoosePresentMode() {
-		if (present_modes.Contains(VK_PRESENT_MODE_MAILBOX_KHR))
-			return VK_PRESENT_MODE_MAILBOX_KHR;
-
-		return VK_PRESENT_MODE_FIFO_KHR;
-	}
-
-	VkSurfaceFormatKHR ChooseFormat() {
-		if (!formats.Contains({ VK_FORMAT_B8G8R8A8_SRGB, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR }))
-			return { VK_FORMAT_B8G8R8A8_SRGB, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR };
-
-		return formats[0];
-	}
-
-	VkExtent2D GetExtent(Window* window) {
-		if (capabilities.currentExtent.width != -1)
-			return capabilities.currentExtent;
-
-		Vector2 fb_size = window->GetFrameBufferSize();
-		return {
-			Clamp((u32)fb_size.x, capabilities.minImageExtent.width,  capabilities.maxImageExtent.width),
-			Clamp((u32)fb_size.y, capabilities.minImageExtent.height, capabilities.maxImageExtent.height),
-		};
-	}
-
-	u32 GetImageCount() {
-		u32 image_count = capabilities.minImageCount + 1;
-
-		if (capabilities.maxImageCount > 0)
-			image_count = Min(image_count, capabilities.maxImageCount);
-
-		return image_count;
-	}
-
-
-	void Free() {
-		formats.Free();
-		present_modes.Free();
-	}
-};
-
-static SwapchainSupportInfo QuerySwapchainSupportInfo(VkPhysicalDevice pdev, VkSurfaceKHR surface) {
-	SwapchainSupportInfo info = {
-		.surface = surface,
-	};
-
-	// Get capabilities.
-	VkResult result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(pdev, surface, &info.capabilities);
-	Assert(result == VK_SUCCESS);
-
-	// Get formats.
-	u32 format_count;
-	vkGetPhysicalDeviceSurfaceFormatsKHR(pdev, surface, &format_count, null);
-	info.formats.AssureCount(format_count);
-	vkGetPhysicalDeviceSurfaceFormatsKHR(pdev, surface, &format_count, info.formats.elements);
-
-	// Get present modes.
-	u32 present_mode_count;
-	vkGetPhysicalDeviceSurfacePresentModesKHR(pdev, surface, &present_mode_count, null);
-	info.present_modes.AssureCount(present_mode_count);
-	vkGetPhysicalDeviceSurfacePresentModesKHR(pdev, surface, &present_mode_count, info.present_modes.elements);
-
-	return info;
-}
-
 static bool IsPhysicalDeviceGood(VkPhysicalDevice pdev) {
 	VkPhysicalDeviceProperties props;
 	vkGetPhysicalDeviceProperties(pdev, &props);
@@ -387,17 +397,29 @@ static Queue* CreateQueue(u32 family_index) {
 	return queue;
 }
 
-static VkSwapchainKHR CreateSwapchain() {
-	SwapchainSupportInfo swapchain_info = QuerySwapchainSupportInfo(physical_device, window.surface);
+static List<VkImage> QuerySwapchainImages(VkSwapchainKHR swapchain) {
+	List<VkImage> result;
+
+	u32 image_count;
+	vkGetSwapchainImagesKHR(device, swapchain, &image_count, null);
+
+	result.AssureCount(image_count);
+	vkGetSwapchainImagesKHR(device, swapchain, &image_count, result.elements);
+
+	return result;
+}
+
+static Swapchain CreateSwapchain(Window* window) {
+	SwapchainSupportInfo swapchain_info = QuerySwapchainSupportInfo(physical_device, window->surface);
 	VkPresentModeKHR present_mode = swapchain_info.ChoosePresentMode();
 	VkSurfaceFormatKHR surface_format = swapchain_info.ChooseFormat();
-	VkExtent2D extent = swapchain_info.GetExtent(&window);
+	VkExtent2D extent = swapchain_info.GetExtent(window);
 	u32 image_count = swapchain_info.GetImageCount();
 
 	VkSwapchainCreateInfoKHR swapchain_create_info = {
 		.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
 
-		.surface          = window.surface,
+		.surface          = window->surface,
 		.minImageCount    = image_count,
 		.imageFormat      = surface_format.format,
 		.imageColorSpace  = surface_format.colorSpace,
@@ -416,24 +438,23 @@ static VkSwapchainKHR CreateSwapchain() {
 		.oldSwapchain = null,
 	};
 
-	VkSwapchainKHR swapchain;
-	VkResult result = vkCreateSwapchainKHR(device, &swapchain_create_info, null, &swapchain);
+	VkSwapchainKHR handle;
+	VkResult result = vkCreateSwapchainKHR(device, &swapchain_create_info, null, &handle);
 	Assert(result == VK_SUCCESS);
 
+	List<VkImage> images = QuerySwapchainImages(handle);
+
+	Swapchain swapchain = {
+		.handle = handle,
+		.format = surface_format,
+		.extent = extent,
+		.images = images,
+		// .views  = GenerateImageViews // @fixme
+	};
+
 	swapchain_info.Free();
+
 	return swapchain;
-}
-
-static List<VkImage> QuerySwapchainImages(VkSwapchainKHR swapchain) {
-	List<VkImage> result;
-
-	u32 image_count;
-	vkGetSwapchainImagesKHR(device, swapchain, &image_count, null);
-
-	result.AssureCount(image_count);
-	vkGetSwapchainImagesKHR(device, swapchain, &image_count, result.elements);
-
-	return result;
 }
 
 int main(int argc, char** argv) {
@@ -450,8 +471,7 @@ int main(int argc, char** argv) {
 
 	general_queue = CreateQueue(queue_family_table.graphics);
 
-	swapchain        = CreateSwapchain();
-	swapchain_images = QuerySwapchainImages(swapchain);
+	swapchain = CreateSwapchain(&window);
 
 	while (!window.ShouldClose()) {
 		window.Update();
@@ -460,7 +480,7 @@ int main(int argc, char** argv) {
 	}
 
 	Print("Terminating...\n");
-	vkDestroySwapchainKHR(device, swapchain, null);
+	swapchain.Destroy(device);
 	window.Destroy();
 	vkDestroyDevice(device, null);
 	vkDestroyInstance(vk, null);
