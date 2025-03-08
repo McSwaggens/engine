@@ -69,14 +69,16 @@ static List<VkPhysicalDevice> physical_devices;
 static VkPhysicalDevice physical_device;
 static VkDevice device;
 static QueueFamilyTable queue_family_table;
-static VkQueue graphics_queue;
-static VkQueue present_queue;
+static List<const char*> vk_enabled_extensions;
+
 static VkSurfaceKHR surface;
 static Window window;
 
 static const char* vk_enabled_layers[] = {
 	"VK_LAYER_KHRONOS_validation",
 };
+
+static u32 vk_enabled_layer_count = sizeof(vk_enabled_layers) / sizeof(*vk_enabled_layers);
 
 void QueryValidationLayers() {
 	u32 layer_count;
@@ -112,18 +114,17 @@ static List<const char*> QueryGlfwRequiredExtensions() {
 }
 
 static void InitVulkan() {
-	List<const char*> required_extensions;
 	List<const char*> glfw_required_extensions = QueryGlfwRequiredExtensions();
 
-	required_extensions.Add(glfw_required_extensions);
-	required_extensions.Add(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+	vk_enabled_extensions.Add(glfw_required_extensions);
+	vk_enabled_extensions.Add(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 #ifdef MACOS
-	required_extensions.Add(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+	vk_enabled_extensions.Add(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
 #endif
 
 
 	Print("Required Extensions:\n");
-	for (auto ext : required_extensions)
+	for (auto ext : vk_enabled_extensions)
 		Print("\t%\n", CString(ext));
 
 	Print("Glfw Required Extensions:\n");
@@ -151,18 +152,16 @@ static void InitVulkan() {
 #endif
 		.pApplicationInfo = &app_info,
 
-		.ppEnabledExtensionNames = required_extensions.elements,
-		.enabledExtensionCount   = required_extensions.count,
+		.ppEnabledExtensionNames = vk_enabled_extensions.elements,
+		.enabledExtensionCount   = vk_enabled_extensions.count,
 
 		.ppEnabledLayerNames = vk_enabled_layers,
-		.enabledLayerCount   = 1,
+		.enabledLayerCount   = vk_enabled_layer_count,
 	};
 
 	VkResult result = vkCreateInstance(&inst_info, null, &vk);
 	LogVar(ToString(result));
 	Assert(result == VK_SUCCESS);
-
-	required_extensions.Free();
 }
 
 static List<VkPhysicalDevice> QueryPhysicalDevices() {
@@ -257,6 +256,15 @@ static VkDevice CreateLogicalDevice(VkPhysicalDevice pdev) {
 
 	VkPhysicalDeviceFeatures features = { };
 
+	Print("Device extensions:\n");
+	for (const char* ext_name : vk_enabled_extensions) {
+		Print("\t%\n", CString(ext_name));
+		standard_output_buffer.Flush();
+	}
+
+	List<const char*> ldev_extension_names;
+	ldev_extension_names.Add("VK_KHR_portability_subset");
+
 	VkDeviceCreateInfo device_create_info = {
 		.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
 
@@ -265,15 +273,20 @@ static VkDevice CreateLogicalDevice(VkPhysicalDevice pdev) {
 
 		.pEnabledFeatures = &features,
 
-		.enabledExtensionCount = 0,
-		.ppEnabledExtensionNames = null,
+		.ppEnabledExtensionNames = ldev_extension_names.elements,
+		.enabledExtensionCount   = ldev_extension_names.count,
 
-		.enabledLayerCount = 0,
+		.ppEnabledLayerNames = vk_enabled_layers,
+		.enabledLayerCount   = vk_enabled_layer_count,
 	};
+
 
 	VkDevice dev;
 	VkResult result = vkCreateDevice(pdev, &device_create_info, null, &dev);
+	LogVar(ToString(result));
 	Assert(result == VK_SUCCESS);
+
+	ldev_extension_names.Free();
 
 	return dev;
 }
@@ -315,9 +328,10 @@ int main(int argc, char** argv) {
 		standard_output_buffer.Flush();
 	}
 
+	Print("Terminating...\n");
+	window.Destroy();
 	vkDestroyDevice(device, null);
 	vkDestroyInstance(vk, null);
-	window.Destroy();
 	glfwTerminate();
 
 	standard_output_buffer.Flush();

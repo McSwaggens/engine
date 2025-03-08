@@ -11,7 +11,7 @@ struct List {
 	u32 count;
 	u32 capacity;
 
-	List() : elements(0), count(0), capacity(0) { }
+	List() : elements(null), count(0), capacity(0) { }
 
 	explicit List(T* elements, u32 count, u32 capacity) :
 		elements(elements), count(count), capacity(capacity) { }
