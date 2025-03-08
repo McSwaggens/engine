@@ -71,6 +71,7 @@ static Queue* general_queue;
 static QueueFamilyTable queue_family_table;
 static Window window;
 static VkSwapchainKHR swapchain;
+static List<VkImage> swapchain_images;
 
 static const char* vk_enabled_layers[] = {
 	"VK_LAYER_KHRONOS_validation",
@@ -242,6 +243,16 @@ struct SwapchainSupportInfo {
 		};
 	}
 
+	u32 GetImageCount() {
+		u32 image_count = capabilities.minImageCount + 1;
+
+		if (capabilities.maxImageCount > 0)
+			image_count = Min(image_count, capabilities.maxImageCount);
+
+		return image_count;
+	}
+
+
 	void Free() {
 		formats.Free();
 		present_modes.Free();
@@ -381,10 +392,7 @@ static VkSwapchainKHR CreateSwapchain() {
 	VkPresentModeKHR present_mode = swapchain_info.ChoosePresentMode();
 	VkSurfaceFormatKHR surface_format = swapchain_info.ChooseFormat();
 	VkExtent2D extent = swapchain_info.GetExtent(&window);
-
-	u32 image_count = swapchain_info.capabilities.minImageCount + 1;
-	if (swapchain_info.capabilities.maxImageCount > 0)
-		image_count = Min(image_count, swapchain_info.capabilities.maxImageCount);
+	u32 image_count = swapchain_info.GetImageCount();
 
 	VkSwapchainCreateInfoKHR swapchain_create_info = {
 		.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
@@ -412,7 +420,20 @@ static VkSwapchainKHR CreateSwapchain() {
 	VkResult result = vkCreateSwapchainKHR(device, &swapchain_create_info, null, &swapchain);
 	Assert(result == VK_SUCCESS);
 
+	swapchain_info.Free();
 	return swapchain;
+}
+
+static List<VkImage> QuerySwapchainImages(VkSwapchainKHR swapchain) {
+	List<VkImage> result;
+
+	u32 image_count;
+	vkGetSwapchainImagesKHR(device, swapchain, &image_count, null);
+
+	result.AssureCount(image_count);
+	vkGetSwapchainImagesKHR(device, swapchain, &image_count, result.elements);
+
+	return result;
 }
 
 int main(int argc, char** argv) {
@@ -422,13 +443,15 @@ int main(int argc, char** argv) {
 
 	InitVulkan();
 	window.InitSurface();
-	LogVar((u64)window.surface);
 
 	physical_device = FindPhysicalDevice();
 	queue_family_table = QueryQueueFamilyTable(physical_device);
 	device = CreateLogicalDevice(physical_device);
+
 	general_queue = CreateQueue(queue_family_table.graphics);
-	swapchain = CreateSwapchain();
+
+	swapchain        = CreateSwapchain();
+	swapchain_images = QuerySwapchainImages(swapchain);
 
 	while (!window.ShouldClose()) {
 		window.Update();

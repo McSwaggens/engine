@@ -98,4 +98,8 @@ static u64 BitsBetween(u64 left, u64 right) {
 	return (-1llu << left) ^ (-1llu << right);
 }
 
+static bool IsPow2(u64 n) {
+	return PopCount(n) == 1;
+}
+
 #endif // MATH_H
