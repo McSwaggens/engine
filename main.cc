@@ -256,14 +256,15 @@ static VkDevice CreateLogicalDevice(VkPhysicalDevice pdev) {
 
 	VkPhysicalDeviceFeatures features = { };
 
-	Print("Device extensions:\n");
-	for (const char* ext_name : vk_enabled_extensions) {
-		Print("\t%\n", CString(ext_name));
-		standard_output_buffer.Flush();
-	}
-
 	List<const char*> ldev_extension_names;
+#ifdef MACOS
+	Print("MACOS IS DEFINED!\n");
 	ldev_extension_names.Add("VK_KHR_portability_subset");
+#endif
+
+	Print("Device extensions:\n");
+	for (const char* ext_name : ldev_extension_names)
+		Print("\t%\n", CString(ext_name));
 
 	VkDeviceCreateInfo device_create_info = {
 		.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,

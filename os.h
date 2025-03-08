@@ -4,9 +4,7 @@
 #include "general.h"
 #include "string.h"
 
-#define MACOS 1
-
-#if MACOS
+#ifdef MACOS
 	#define PAGE_SIZE (16 << 10)
 #else
 	#define PAGE_SIZE (4 << 10)

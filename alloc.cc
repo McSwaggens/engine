@@ -141,6 +141,7 @@ static void* AllocMemory(u64 size) {
 }
 
 static void FreeMemory(void* p, u64 size) {
+	if (!p) return;
 	// Print("FreeMemory(%, %)\n", p, size);
 	size = GaNormalizeSize(size);
 	u32 index = Ctz64(size);
@@ -164,6 +165,7 @@ static void* ReAllocMemory(void* p, u64 old_size, u64 new_size) {
 		CopyMemory(result, p, old_real_size);
 		FreeMemory(p, old_size);
 	}
+	else Assert(!p);
 
 	return result;
 }
