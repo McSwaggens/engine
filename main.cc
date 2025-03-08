@@ -35,7 +35,7 @@ struct Queue {
 template<typename T, u32 N>
 struct FixedAllocator {
 	T stack[N];
-	u32 head;
+	u32 head = 0;
 
 	T* Next() {
 		Assert(head < N);
@@ -45,9 +45,6 @@ struct FixedAllocator {
 	T* begin() { return stack; }
 	T* end()   { return stack + head; }
 };
-
-static FixedAllocator<Queue, 32> queues;
-static Queue* general_queue;
 
 struct QueueFamilyTable {
 	u32 graphics = -1;
@@ -64,14 +61,14 @@ struct QueueFamilyTable {
 	}
 };
 
-static List<VkLayerProperties> vk_layers;
-static List<VkPhysicalDevice> physical_devices;
 static VkPhysicalDevice physical_device;
 static VkDevice device;
-static QueueFamilyTable queue_family_table;
+static List<VkLayerProperties> vk_layers;
+static List<VkPhysicalDevice> physical_devices;
 static List<const char*> vk_enabled_extensions;
-
-static VkSurfaceKHR surface;
+static FixedAllocator<Queue, 32> queues;
+static Queue* general_queue;
+static QueueFamilyTable queue_family_table;
 static Window window;
 
 static const char* vk_enabled_layers[] = {
@@ -258,7 +255,6 @@ static VkDevice CreateLogicalDevice(VkPhysicalDevice pdev) {
 
 	List<const char*> ldev_extension_names;
 #ifdef MACOS
-	Print("MACOS IS DEFINED!\n");
 	ldev_extension_names.Add("VK_KHR_portability_subset");
 #endif
 
@@ -292,7 +288,7 @@ static VkDevice CreateLogicalDevice(VkPhysicalDevice pdev) {
 	return dev;
 }
 
-static Queue* CreateQueue(VkDevice device, u32 family_index) {
+static Queue* CreateQueue(u32 family_index) {
 	for (auto& queue : queues)
 		if (queue.family == family_index)
 			return &queue;
@@ -321,7 +317,7 @@ int main(int argc, char** argv) {
 	physical_device = FindPhysicalDevice();
 	queue_family_table = QueryQueueFamilyTable(physical_device);
 	device = CreateLogicalDevice(physical_device);
-	general_queue = CreateQueue(device, queue_family_table.graphics);
+	general_queue = CreateQueue(queue_family_table.graphics);
 
 	while (!window.ShouldClose()) {
 		window.Update();
