@@ -106,21 +106,19 @@ struct List {
 		count = l - elements;
 	}
 
-	void RemoveDuplicates() {
-		T* l = elements;
-		T* r = elements;
-
-		while (r < End()) {
-		}
-	}
-
 	void Pop(u32 n = 1) {
 		Assert(count >= n);
 		count -= n;
 	}
 
+	void Reset() {
+		count = 0;
+	}
+
 	void Free() {
-		FreeMemory(elements, sizeof(T) * count);
+		FreeMemory(elements, sizeof(T) * capacity);
+		capacity = 0;
+		Reset();
 	}
 
 };

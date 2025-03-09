@@ -32,14 +32,62 @@ struct Queue {
 struct Swapchain {
 	VkSwapchainKHR handle = 0;
 
-	VkSurfaceFormatKHR format = { };
+	VkSurfaceFormatKHR surface_format = { };
 	VkExtent2D extent = { 0, 0 };
 
 	List<VkImage>     images;
 	List<VkImageView> views;
 
+	void InitImages(VkDevice device) {
+		images.Reset();
+
+		u32 image_count;
+		vkGetSwapchainImagesKHR(device, handle, &image_count, null);
+
+		images.AssureCount(image_count);
+		vkGetSwapchainImagesKHR(device, handle, &image_count, images.elements);
+	}
+
+	void InitViews(VkDevice device) {
+		views.Reset();
+		views.AssureCount(images.count);
+
+		for (u32 i = 0; i < images.count; i++) {
+			VkImage* image = &images[i];
+			VkImageViewCreateInfo image_view_create_info = {
+				.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+
+				.viewType = VK_IMAGE_VIEW_TYPE_2D,
+				.image = *image,
+				.format = surface_format.format,
+
+				.components = {
+					.r = VK_COMPONENT_SWIZZLE_IDENTITY,
+					.g = VK_COMPONENT_SWIZZLE_IDENTITY,
+					.b = VK_COMPONENT_SWIZZLE_IDENTITY,
+					.a = VK_COMPONENT_SWIZZLE_IDENTITY,
+				},
+
+				.subresourceRange = {
+					.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+					.baseMipLevel   = 0,
+					.levelCount     = 1,
+					.baseArrayLayer = 0,
+					.layerCount     = 1,
+				},
+			};
+
+			vkCreateImageView(device, &image_view_create_info, null, &views[i]);
+		}
+	}
+
 	void Destroy(VkDevice device) {
-		vkDestroySwapchainKHR(device, handle, null);
+		vkDestroySwapchainKHR(device, handle, null); // Destroys images.
+		images.Reset();
+
+		for (VkImageView view : views)
+			vkDestroyImageView(device, view, null);
+		views.Reset();
 	}
 };
 
@@ -397,18 +445,6 @@ static Queue* CreateQueue(u32 family_index) {
 	return queue;
 }
 
-static List<VkImage> QuerySwapchainImages(VkSwapchainKHR swapchain) {
-	List<VkImage> result;
-
-	u32 image_count;
-	vkGetSwapchainImagesKHR(device, swapchain, &image_count, null);
-
-	result.AssureCount(image_count);
-	vkGetSwapchainImagesKHR(device, swapchain, &image_count, result.elements);
-
-	return result;
-}
-
 static Swapchain CreateSwapchain(Window* window) {
 	SwapchainSupportInfo swapchain_info = QuerySwapchainSupportInfo(physical_device, window->surface);
 	VkPresentModeKHR present_mode = swapchain_info.ChoosePresentMode();
@@ -442,16 +478,14 @@ static Swapchain CreateSwapchain(Window* window) {
 	VkResult result = vkCreateSwapchainKHR(device, &swapchain_create_info, null, &handle);
 	Assert(result == VK_SUCCESS);
 
-	List<VkImage> images = QuerySwapchainImages(handle);
-
 	Swapchain swapchain = {
 		.handle = handle,
-		.format = surface_format,
+		.surface_format = surface_format,
 		.extent = extent,
-		.images = images,
-		// .views  = GenerateImageViews // @fixme
 	};
 
+	swapchain.InitImages(device);
+	swapchain.InitViews(device);
 	swapchain_info.Free();
 
 	return swapchain;
