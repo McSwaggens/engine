@@ -2,15 +2,14 @@ program_xxx: *.cc *.h
 	clang \
 		main.cc \
 		-O0 -g3 \
-		-framework cocoa -framework IOKit \
-		-lglfw3 -lvulkan -lMoltenVK \
+		-lglfw -lvulkan \
 		-std=c++20 \
-		-Wno-writable-strings \
+		-Wno-writable-strings -Wno-reorder-init-list -Wno-vla-cxx-extension\
 		-o program
 
-		# -I /Users/daniel/VulkanSDK/1.4.304.1/macOS/include/ \
-		# -L /Users/daniel/VulkanSDK/1.4.304.1/macOS/lib/ \
+		glslc -fshader-stage=vertex   vert.glsl -o vert.spv
+		glslc -fshader-stage=fragment frag.glsl -o frag.spv
 
 run: program_xxx
-	echo $(DYLD_LIBRARY_PATH)
+	pkill program || true
 	./program

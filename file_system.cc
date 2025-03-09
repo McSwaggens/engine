@@ -37,3 +37,18 @@ static bool DoesFileExist(String path)
 	return access(cpath, 0) == 0;
 }
 
+static Array<byte> LoadFile(String path) {
+	File file = OpenFile(path);
+	u64 size = file.QueryFileSize();
+
+	byte* p = (byte*)AllocMemory(size);
+	file.Read(p, size);
+	file.Close();
+
+	Array<byte> result = {
+		.data   = p,
+		.length = size,
+	};
+
+	return result;
+}

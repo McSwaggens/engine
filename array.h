@@ -3,13 +3,14 @@
 
 template<typename T>
 struct Array {
-	T*  data;
-	u64 length;
-
-	Array(T* data, u64 length) : data(data), length(length) { }
+	T*  data = null;
+	u64 length = 0;
 
 	T& operator[](u64 n) { return data[n]; }
 	operator T*()   { return data; }
+
+	T* begin() { return data; }
+	T* end()   { return data + length; }
 };
 
 #endif // ARRAY_H

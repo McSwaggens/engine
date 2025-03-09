@@ -89,7 +89,7 @@ static const FileAccessFlags FILE_ACCESS_READ  = 0x1;
 static const FileAccessFlags FILE_ACCESS_WRITE = 0x2;
 
 static File        OpenFile(String path);
-static Array<byte> LoadFile(String path); // @todo
+static Array<byte> LoadFile(String path);
 static bool        DoesFileExist(String path);
 
 #endif // FILE_SYSTEM_H

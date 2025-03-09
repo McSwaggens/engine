@@ -200,7 +200,7 @@ static FixedAllocator<Queue, 32> queues;
 static Queue* general_queue;
 static QueueFamilyTable queue_family_table;
 static Window window;
-Swapchain swapchain;
+static Swapchain swapchain;
 
 static const char* vk_enabled_layers[] = {
 	"VK_LAYER_KHRONOS_validation",
@@ -491,6 +491,9 @@ static Swapchain CreateSwapchain(Window* window) {
 	return swapchain;
 }
 
+static void CreatePipeline() {
+}
+
 int main(int argc, char** argv) {
 	InitWindowSystem();
 
@@ -506,6 +509,15 @@ int main(int argc, char** argv) {
 	general_queue = CreateQueue(queue_family_table.graphics);
 
 	swapchain = CreateSwapchain(&window);
+
+	Array<byte> vert_spv = LoadFile("vert.spv");
+	Array<byte> frag_spv = LoadFile("frag.spv");
+
+	LogVar(frag_spv.length);
+	LogVar(vert_spv.length);
+
+	Assert(frag_spv.length);
+	Assert(vert_spv.length);
 
 	while (!window.ShouldClose()) {
 		window.Update();
