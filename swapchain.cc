@@ -1,6 +1,55 @@
 #include "swapchain.h"
 
 #include "vk_helper.h"
+#include "print.h"
+
+static Swapchain CreateSwapchain(VkPhysicalDevice physical_device, VkDevice device, Window* window) {
+	Print("Creating swapchain...\n");
+
+	SwapchainSupportInfo swapchain_info = QuerySwapchainSupportInfo(physical_device, window->surface);
+	VkPresentModeKHR present_mode = swapchain_info.ChoosePresentMode();
+	VkSurfaceFormatKHR surface_format = swapchain_info.ChooseFormat();
+	VkExtent2D extent = swapchain_info.GetExtent(window);
+	u32 image_count = swapchain_info.GetImageCount();
+
+	VkSwapchainCreateInfoKHR swapchain_create_info = {
+		.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+
+		.surface          = window->surface,
+		.minImageCount    = image_count,
+		.imageFormat      = surface_format.format,
+		.imageColorSpace  = surface_format.colorSpace,
+		.imageExtent      = extent,
+		.imageArrayLayers = 1,
+		.imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+
+		.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE, // present queue and graphics queue are the same.
+		.queueFamilyIndexCount = 0,
+		.pQueueFamilyIndices   = null,
+
+		.preTransform = swapchain_info.capabilities.currentTransform, // No transform.
+		.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+		.presentMode = present_mode,
+		.clipped = true,
+		.oldSwapchain = null,
+	};
+
+	VkSwapchainKHR handle;
+	VkResult result = vkCreateSwapchainKHR(device, &swapchain_create_info, null, &handle);
+	Assert(result == VK_SUCCESS);
+
+	Swapchain swapchain = {
+		.handle = handle,
+		.surface_format = surface_format,
+		.extent = extent,
+	};
+
+	swapchain.InitImages(device);
+	swapchain.InitViews(device);
+	swapchain_info.Free();
+
+	return swapchain;
+}
 
 void Swapchain::InitImages(VkDevice device) {
 	images.Reset();
@@ -82,3 +131,28 @@ void Swapchain::Destroy(VkDevice device) {
 		vkDestroyImageView(device, view, null);
 	views.Reset();
 }
+
+static SwapchainSupportInfo QuerySwapchainSupportInfo(VkPhysicalDevice pdev, VkSurfaceKHR surface) {
+	SwapchainSupportInfo info = {
+		.surface = surface,
+	};
+
+	// Get capabilities.
+	VkResult result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(pdev, surface, &info.capabilities);
+	Assert(result == VK_SUCCESS);
+
+	// Get formats.
+	u32 format_count;
+	vkGetPhysicalDeviceSurfaceFormatsKHR(pdev, surface, &format_count, null);
+	info.formats.AssureCount(format_count);
+	vkGetPhysicalDeviceSurfaceFormatsKHR(pdev, surface, &format_count, info.formats.elements);
+
+	// Get present modes.
+	u32 present_mode_count;
+	vkGetPhysicalDeviceSurfacePresentModesKHR(pdev, surface, &present_mode_count, null);
+	info.present_modes.AssureCount(present_mode_count);
+	vkGetPhysicalDeviceSurfacePresentModesKHR(pdev, surface, &present_mode_count, info.present_modes.elements);
+
+	return info;
+}
+

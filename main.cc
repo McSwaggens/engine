@@ -7,7 +7,7 @@ static VkInstance vk;
 #include "math.h"
 #include "window.h"
 
-#define LogVar(var) Print(#var " = %\n", var)
+#define LogVar(var) Print("%:%: note: " #var " = %\n", CString(__FILE__), __LINE__, var)
 
 #include "vector.h"
 #include "quaternion.h"
@@ -31,77 +31,6 @@ struct Queue {
 	u32 index;
 	u32 family;
 };
-
-struct SwapchainSupportInfo {
-	VkSurfaceKHR surface;
-	VkSurfaceCapabilitiesKHR capabilities;
-	List<VkSurfaceFormatKHR> formats;
-	List<VkPresentModeKHR>   present_modes;
-
-	VkPresentModeKHR ChoosePresentMode() {
-		if (present_modes.Contains(VK_PRESENT_MODE_MAILBOX_KHR))
-			return VK_PRESENT_MODE_MAILBOX_KHR;
-
-		return VK_PRESENT_MODE_FIFO_KHR;
-	}
-
-	VkSurfaceFormatKHR ChooseFormat() {
-		if (!formats.Contains({ VK_FORMAT_B8G8R8A8_SRGB, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR }))
-			return { VK_FORMAT_B8G8R8A8_SRGB, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR };
-
-		return formats[0];
-	}
-
-	VkExtent2D GetExtent(Window* window) {
-		if (capabilities.currentExtent.width != -1)
-			return capabilities.currentExtent;
-
-		Vector2 fb_size = window->GetFrameBufferSize();
-		return {
-			Clamp((u32)fb_size.x, capabilities.minImageExtent.width,  capabilities.maxImageExtent.width),
-			Clamp((u32)fb_size.y, capabilities.minImageExtent.height, capabilities.maxImageExtent.height),
-		};
-	}
-
-	u32 GetImageCount() {
-		u32 image_count = capabilities.minImageCount + 1;
-
-		if (capabilities.maxImageCount > 0)
-			image_count = Min(image_count, capabilities.maxImageCount);
-
-		return image_count;
-	}
-
-
-	void Free() {
-		formats.Free();
-		present_modes.Free();
-	}
-};
-
-static SwapchainSupportInfo QuerySwapchainSupportInfo(VkPhysicalDevice pdev, VkSurfaceKHR surface) {
-	SwapchainSupportInfo info = {
-		.surface = surface,
-	};
-
-	// Get capabilities.
-	VkResult result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(pdev, surface, &info.capabilities);
-	Assert(result == VK_SUCCESS);
-
-	// Get formats.
-	u32 format_count;
-	vkGetPhysicalDeviceSurfaceFormatsKHR(pdev, surface, &format_count, null);
-	info.formats.AssureCount(format_count);
-	vkGetPhysicalDeviceSurfaceFormatsKHR(pdev, surface, &format_count, info.formats.elements);
-
-	// Get present modes.
-	u32 present_mode_count;
-	vkGetPhysicalDeviceSurfacePresentModesKHR(pdev, surface, &present_mode_count, null);
-	info.present_modes.AssureCount(present_mode_count);
-	vkGetPhysicalDeviceSurfacePresentModesKHR(pdev, surface, &present_mode_count, info.present_modes.elements);
-
-	return info;
-}
 
 template<typename T, u32 N>
 struct FixedAllocator {
@@ -392,56 +321,10 @@ static Queue* CreateQueue(u32 family_index) {
 	return queue;
 }
 
-static Swapchain CreateSwapchain(Window* window) {
-	SwapchainSupportInfo swapchain_info = QuerySwapchainSupportInfo(physical_device, window->surface);
-	VkPresentModeKHR present_mode = swapchain_info.ChoosePresentMode();
-	VkSurfaceFormatKHR surface_format = swapchain_info.ChooseFormat();
-	VkExtent2D extent = swapchain_info.GetExtent(window);
-	u32 image_count = swapchain_info.GetImageCount();
-
-	VkSwapchainCreateInfoKHR swapchain_create_info = {
-		.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-
-		.surface          = window->surface,
-		.minImageCount    = image_count,
-		.imageFormat      = surface_format.format,
-		.imageColorSpace  = surface_format.colorSpace,
-		.imageExtent      = extent,
-		.imageArrayLayers = 1,
-		.imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-
-		.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE, // present queue and graphics queue are the same.
-		.queueFamilyIndexCount = 0,
-		.pQueueFamilyIndices   = null,
-
-		.preTransform = swapchain_info.capabilities.currentTransform, // No transform.
-		.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
-		.presentMode = present_mode,
-		.clipped = true,
-		.oldSwapchain = null,
-	};
-
-	VkSwapchainKHR handle;
-	VkResult result = vkCreateSwapchainKHR(device, &swapchain_create_info, null, &handle);
-	Assert(result == VK_SUCCESS);
-
-	Swapchain swapchain = {
-		.handle = handle,
-		.surface_format = surface_format,
-		.extent = extent,
-	};
-
-	swapchain.InitImages(device);
-	swapchain.InitViews(device);
-	swapchain_info.Free();
-
-	return swapchain;
-}
-
 static VkShaderModule LoadShader(String path) {
 	VkShaderModule module;
 
-	Print("Loading shader module: \"%\"\n", path);
+	Print("Loading shader module: \"%\"...\n", path);
 
 	Array<byte> code = LoadFile(path);
 	Assert(code.length);
@@ -462,6 +345,8 @@ static VkShaderModule LoadShader(String path) {
 }
 
 static void CreateRenderPass() {
+	Print("Creating renderpass...\n");
+
 	// Make this an array?
 	VkAttachmentDescription color_attachment = {
 		.format  = swapchain.surface_format.format,
@@ -506,6 +391,8 @@ static void CreateRenderPass() {
 }
 
 static void CreatePipeline() {
+	Print("Creating pipeline...\n");
+
 	// Shaders
 	VkPipelineShaderStageCreateInfo vert_stage_info = {
 		.sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -676,6 +563,8 @@ static void CreatePipeline() {
 }
 
 static void CreateCommandPool() {
+	Print("Creating command pool...\n");
+
 	VkCommandPoolCreateInfo command_pool_info = {
 		.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
 		.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT, // Individual buffer recreation.
@@ -700,7 +589,7 @@ int main(int argc, char** argv) {
 
 	general_queue = CreateQueue(queue_family_table.graphics);
 
-	swapchain = CreateSwapchain(&window);
+	swapchain = CreateSwapchain(physical_device, device, &window);
 
 	vert = LoadShader("vert.spv");
 	frag = LoadShader("frag.spv");
