@@ -118,6 +118,7 @@ static List<const char*> QueryGlfwRequiredExtensions() {
 }
 
 static void InitVulkan() {
+	Print("Initializing vulkan...\n");
 	List<const char*> glfw_required_extensions = QueryGlfwRequiredExtensions();
 
 	vk_enabled_extensions.Add(glfw_required_extensions);
@@ -245,6 +246,8 @@ static bool IsPhysicalDeviceGood(VkPhysicalDevice pdev) {
 }
 
 static VkPhysicalDevice FindPhysicalDevice() {
+	Print("Finding physical device...\n");
+
 	physical_devices = QueryPhysicalDevices();
 
 	for (VkPhysicalDevice pdev : physical_devices)
@@ -256,6 +259,8 @@ static VkPhysicalDevice FindPhysicalDevice() {
 }
 
 static VkDevice CreateLogicalDevice(VkPhysicalDevice pdev) {
+	Print("Creating logical device...\n");
+
 	float priority = 1.0;
 	standard_output_buffer.Flush();
 	VkDeviceQueueCreateInfo queue_create_info = {
