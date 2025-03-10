@@ -638,7 +638,8 @@ static void RecordCommandBuffer(VkCommandBuffer command_buffer, u32 image_index)
 			.extent = swapchain.extent,
 		},
 
-		.pClearValues = &clear_color,
+		.pClearValues    = &clear_color,
+		.clearValueCount = 1,
 	};
 
 	VkViewport viewport = {
@@ -780,6 +781,8 @@ int main(int argc, char** argv) {
 		standard_output_buffer.Flush();
 	}
 
+	vkDeviceWaitIdle(device);
+
 	Print("Terminating...\n");
 	vkDestroySemaphore(device, image_available_semaphore, null);
 	vkDestroySemaphore(device, render_finished_semaphore, null);
@@ -787,6 +790,7 @@ int main(int argc, char** argv) {
 	vkDestroyCommandPool(device, command_pool, null);
 	vkDestroyRenderPass(device, renderpass, null);
 	vkDestroyPipelineLayout(device, pipeline_layout, null);
+	vkDestroyPipeline(device, pipeline, null);
 	vkDestroyShaderModule(device, vert, null);
 	vkDestroyShaderModule(device, frag, null);
 	swapchain.Destroy(device);
@@ -795,6 +799,7 @@ int main(int argc, char** argv) {
 	vkDestroyInstance(vk, null);
 	glfwTerminate();
 
+	Print("Goodbye!\n");
 	standard_output_buffer.Flush();
 
 	return 0;
