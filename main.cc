@@ -14,12 +14,15 @@ static VkInstance vk;
 
 #include "list.h"
 
+#include "swapchain.h"
+
 #include "assert.cc"
 #include "alloc.cc"
 #include "unix.cc"
 #include "window.cc"
 #include "print.cc"
 #include "file_system.cc"
+#include "swapchain.cc"
 
 #include "vk_helper.h"
 
@@ -27,68 +30,6 @@ struct Queue {
 	VkQueue vk;
 	u32 index;
 	u32 family;
-};
-
-struct Swapchain {
-	VkSwapchainKHR handle = 0;
-
-	VkSurfaceFormatKHR surface_format = { };
-	VkExtent2D extent = { 0, 0 };
-
-	List<VkImage>     images;
-	List<VkImageView> views;
-
-	void InitImages(VkDevice device) {
-		images.Reset();
-
-		u32 image_count;
-		vkGetSwapchainImagesKHR(device, handle, &image_count, null);
-
-		images.AssureCount(image_count);
-		vkGetSwapchainImagesKHR(device, handle, &image_count, images.elements);
-	}
-
-	void InitViews(VkDevice device) {
-		views.Reset();
-		views.AssureCount(images.count);
-
-		for (u32 i = 0; i < images.count; i++) {
-			VkImage* image = &images[i];
-			VkImageViewCreateInfo image_view_create_info = {
-				.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-
-				.viewType = VK_IMAGE_VIEW_TYPE_2D,
-				.image = *image,
-				.format = surface_format.format,
-
-				.components = {
-					.r = VK_COMPONENT_SWIZZLE_IDENTITY,
-					.g = VK_COMPONENT_SWIZZLE_IDENTITY,
-					.b = VK_COMPONENT_SWIZZLE_IDENTITY,
-					.a = VK_COMPONENT_SWIZZLE_IDENTITY,
-				},
-
-				.subresourceRange = {
-					.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
-					.baseMipLevel   = 0,
-					.levelCount     = 1,
-					.baseArrayLayer = 0,
-					.layerCount     = 1,
-				},
-			};
-
-			vkCreateImageView(device, &image_view_create_info, null, &views[i]);
-		}
-	}
-
-	void Destroy(VkDevice device) {
-		vkDestroySwapchainKHR(device, handle, null); // Destroys images.
-		images.Reset();
-
-		for (VkImageView view : views)
-			vkDestroyImageView(device, view, null);
-		views.Reset();
-	}
 };
 
 struct SwapchainSupportInfo {
@@ -201,6 +142,12 @@ static Queue* general_queue;
 static QueueFamilyTable queue_family_table;
 static Window window;
 static Swapchain swapchain;
+static VkShaderModule vert;
+static VkShaderModule frag;
+static VkRenderPass renderpass;
+static VkPipelineLayout pipeline_layout;
+static VkPipeline pipeline;
+static VkCommandPool command_pool;
 
 static const char* vk_enabled_layers[] = {
 	"VK_LAYER_KHRONOS_validation",
@@ -491,9 +438,6 @@ static Swapchain CreateSwapchain(Window* window) {
 	return swapchain;
 }
 
-static void CreatePipeline() {
-}
-
 static VkShaderModule LoadShader(String path) {
 	VkShaderModule module;
 
@@ -517,6 +461,231 @@ static VkShaderModule LoadShader(String path) {
 	return module;
 }
 
+static void CreateRenderPass() {
+	// Make this an array?
+	VkAttachmentDescription color_attachment = {
+		.format  = swapchain.surface_format.format,
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+
+		.loadOp  = VK_ATTACHMENT_LOAD_OP_CLEAR,
+		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+
+		.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+
+		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+		.finalLayout   = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+	};
+
+	// Make this an array?
+	VkAttachmentReference color_attachment_ref = {
+		.attachment = 0,
+		.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+	};
+
+	// Make this an array?
+	VkSubpassDescription subpass = {
+		.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+
+		.pColorAttachments = &color_attachment_ref,
+		.colorAttachmentCount = 1,
+	};
+
+	VkRenderPassCreateInfo renderpass_info = {
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+
+		.pAttachments    = &color_attachment,
+		.attachmentCount = 1,
+
+		.pSubpasses   = &subpass,
+		.subpassCount = 1,
+	};
+
+	VkResult vk_result = vkCreateRenderPass(device, &renderpass_info, null, &renderpass);
+	Assert(vk_result == VK_SUCCESS);
+}
+
+static void CreatePipeline() {
+	// Shaders
+	VkPipelineShaderStageCreateInfo vert_stage_info = {
+		.sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+		.pName  = "main",
+		.stage  = VK_SHADER_STAGE_VERTEX_BIT,
+		.module = vert,
+	};
+
+	VkPipelineShaderStageCreateInfo frag_stage_info = {
+		.sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+		.pName  = "main",
+		.stage  = VK_SHADER_STAGE_FRAGMENT_BIT,
+		.module = frag,
+	};
+
+	VkPipelineShaderStageCreateInfo shader_stages[] = { vert_stage_info, frag_stage_info };
+	u32 shader_stage_count = 2;
+
+	// Dynamic State
+	VkDynamicState dynamic_states[] = {
+		VK_DYNAMIC_STATE_VIEWPORT,
+		VK_DYNAMIC_STATE_SCISSOR,
+	};
+
+	Assert(sizeof(dynamic_states) / sizeof(*dynamic_states) == 2);
+
+	VkPipelineDynamicStateCreateInfo dynamic_state_info = {
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+		.pDynamicStates    = dynamic_states,
+		.dynamicStateCount = sizeof(dynamic_states) / sizeof(*dynamic_states),
+	};
+
+	// Vertex Input
+	VkPipelineVertexInputStateCreateInfo vertex_input_info = {
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+
+		.pVertexBindingDescriptions    = null,
+		.vertexBindingDescriptionCount = 0,
+
+		.pVertexAttributeDescriptions    = null,
+		.vertexAttributeDescriptionCount = 0,
+	};
+
+	// Input Assembly
+	VkPipelineInputAssemblyStateCreateInfo input_assembly_state_info = {
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+		.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+		.primitiveRestartEnable = false,
+	};
+
+	// Viewport
+	VkViewport viewport = {
+		.x = 0.0, .y = 0.0,
+		.width  = (f32)swapchain.extent.width,
+		.height = (f32)swapchain.extent.height,
+		.minDepth = 0.0,
+		.maxDepth = 1.0,
+	};
+
+	VkRect2D scissor = {
+		.offset = { 0, 0 },
+		.extent = swapchain.extent,
+	};
+
+	VkPipelineViewportStateCreateInfo viewport_state = {
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+		.viewportCount = 1,
+		.scissorCount  = 1,
+	};
+
+	// Rasterizer
+	VkPipelineRasterizationStateCreateInfo rasterizer_info = {
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+		.depthClampEnable = false,
+		.rasterizerDiscardEnable = false,
+		.polygonMode = VK_POLYGON_MODE_FILL,
+		.lineWidth = 1.0,
+		.cullMode = VK_CULL_MODE_BACK_BIT,
+		.frontFace = VK_FRONT_FACE_CLOCKWISE,
+
+		.depthBiasEnable         = false,
+		.depthBiasConstantFactor = 0.0,
+		.depthBiasClamp          = 0.0,
+		.depthBiasSlopeFactor    = 0.0,
+
+	};
+
+	// Multisampling (not used)
+	VkPipelineMultisampleStateCreateInfo multisampling_info = {
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+		.sampleShadingEnable = false,
+		.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
+		.minSampleShading = 1.0,
+		.pSampleMask = null,
+		.alphaToCoverageEnable = false,
+		.alphaToOneEnable = false,
+	};
+
+	// Color blending
+	VkPipelineColorBlendAttachmentState color_blend_attachment_info = {
+		.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
+
+		.blendEnable = true,
+
+		.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
+		.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+		.colorBlendOp        = VK_BLEND_OP_ADD,
+
+		.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
+		.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
+		.alphaBlendOp        = VK_BLEND_OP_ADD,
+	};
+
+	VkPipelineColorBlendStateCreateInfo color_blend_info = {
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+
+		.logicOpEnable = false, // @fixme Change this to true? logicOp needs to change?
+		.logicOp = VK_LOGIC_OP_COPY,
+
+		.pAttachments = &color_blend_attachment_info,
+		.attachmentCount = 1,
+
+		.blendConstants = { 0, 0, 0, 0 },
+	};
+
+	// Pipeline layout
+	VkPipelineLayoutCreateInfo pipeline_layout_info = {
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+
+		.pSetLayouts = null,
+		.setLayoutCount = 0,
+
+		.pPushConstantRanges = null,
+		.pushConstantRangeCount = 0,
+	};
+
+	VkResult vk_result = vkCreatePipelineLayout(device, &pipeline_layout_info, null, &pipeline_layout);
+	Assert(vk_result == VK_SUCCESS);
+
+	VkGraphicsPipelineCreateInfo pipeline_info = {
+		.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+
+		// Programmable stages
+		.pStages    = shader_stages,
+		.stageCount = shader_stage_count,
+
+		// Fixed functions
+		.pVertexInputState   = &vertex_input_info,
+		.pInputAssemblyState = &input_assembly_state_info,
+		.pViewportState      = &viewport_state,
+		.pRasterizationState = &rasterizer_info,
+		.pMultisampleState   = &multisampling_info,
+		.pDepthStencilState  = null,
+		.pColorBlendState    = &color_blend_info,
+		.pDynamicState       = &dynamic_state_info,
+
+		.layout = pipeline_layout,
+		.renderPass = renderpass,
+		.subpass = 0,
+
+		// Derived pipeline (not used).
+		.basePipelineHandle = VK_NULL_HANDLE,
+		.basePipelineIndex  = -1,
+	};
+
+	vk_result = vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipeline_info, null, &pipeline);
+	Assert(vk_result == VK_SUCCESS);
+}
+
+static void CreateCommandPool() {
+	VkCommandPoolCreateInfo command_pool_info = {
+		.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+		.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT, // Individual buffer recreation.
+		.queueFamilyIndex = general_queue->family, // Graphics queue
+	};
+
+	VkResult vk_result = vkCreateCommandPool(device, &command_pool_info, null, &command_pool);
+	Assert(vk_result == VK_SUCCESS);
+}
+
 int main(int argc, char** argv) {
 	InitWindowSystem();
 
@@ -533,8 +702,14 @@ int main(int argc, char** argv) {
 
 	swapchain = CreateSwapchain(&window);
 
-	VkShaderModule vert = LoadShader("vert.spv");
-	VkShaderModule frag = LoadShader("frag.spv");
+	vert = LoadShader("vert.spv");
+	frag = LoadShader("frag.spv");
+
+	CreateRenderPass();
+	swapchain.InitFrameBuffers(device, renderpass);
+	CreateCommandPool();
+
+	CreatePipeline();
 
 	while (!window.ShouldClose()) {
 		window.Update();
@@ -543,6 +718,11 @@ int main(int argc, char** argv) {
 	}
 
 	Print("Terminating...\n");
+	vkDestroyCommandPool(device, command_pool, null);
+	vkDestroyRenderPass(device, renderpass, null);
+	vkDestroyPipelineLayout(device, pipeline_layout, null);
+	vkDestroyShaderModule(device, vert, null);
+	vkDestroyShaderModule(device, frag, null);
 	swapchain.Destroy(device);
 	window.Destroy();
 	vkDestroyDevice(device, null);
