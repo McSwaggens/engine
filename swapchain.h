@@ -20,6 +20,7 @@ struct Swapchain {
 	void InitImages(VkDevice device);
 	void InitViews(VkDevice device);
 	void InitFrameBuffers(VkDevice device, VkRenderPass renderpass);
+	u32 GetNextImageIndex(VkDevice device, VkSemaphore image_available);
 	void Destroy(VkDevice device);
 };
 

@@ -77,6 +77,10 @@ static VkRenderPass renderpass;
 static VkPipelineLayout pipeline_layout;
 static VkPipeline pipeline;
 static VkCommandPool command_pool;
+static VkCommandBuffer command_buffer;
+static VkSemaphore image_available_semaphore;
+static VkSemaphore render_finished_semaphore;
+static VkFence inflight_fence;
 
 static const char* vk_enabled_layers[] = {
 	"VK_LAYER_KHRONOS_validation",
@@ -381,6 +385,17 @@ static void CreateRenderPass() {
 		.colorAttachmentCount = 1,
 	};
 
+	VkSubpassDependency dependency = {
+		.srcSubpass = VK_SUBPASS_EXTERNAL, // Implicit subpass
+		.dstSubpass = 0, // Our subpass index.
+
+		.srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, // Wait for swapchain to finish reading colors.
+		.srcAccessMask = 0,
+
+		.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+	};
+
 	VkRenderPassCreateInfo renderpass_info = {
 		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
 
@@ -389,6 +404,9 @@ static void CreateRenderPass() {
 
 		.pSubpasses   = &subpass,
 		.subpassCount = 1,
+
+		.dependencyCount = 1,
+		.pDependencies   = &dependency,
 	};
 
 	VkResult vk_result = vkCreateRenderPass(device, &renderpass_info, null, &renderpass);
@@ -580,6 +598,149 @@ static void CreateCommandPool() {
 	Assert(vk_result == VK_SUCCESS);
 }
 
+static VkCommandBuffer CreateCommandBuffer() {
+	VkCommandBuffer result;
+
+	VkCommandBufferAllocateInfo alloc_info = {
+		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+		.commandPool = command_pool,
+		.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+		.commandBufferCount = 1,
+	};
+
+	VkResult vk_result = vkAllocateCommandBuffers(device, &alloc_info, &result);
+	Assert(vk_result == VK_SUCCESS);
+
+	return result;
+}
+
+static void RecordCommandBuffer(VkCommandBuffer command_buffer, u32 image_index) {
+	VkCommandBufferBeginInfo begin_info = {
+		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+		.flags = 0,
+		.pInheritanceInfo = null,
+	};
+
+	VkResult vk_result = vkBeginCommandBuffer(command_buffer, &begin_info);
+	Assert(vk_result == VK_SUCCESS);
+
+	VkClearValue clear_color = {
+		.color = { .float32 = { 0.0, 0.0, 0.0, 1.0 } },
+	};
+
+	VkRenderPassBeginInfo renderpass_begin_info = {
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+		.renderPass = renderpass,
+		.framebuffer = swapchain.framebuffers[image_index],
+
+		.renderArea = {
+			.offset = { 0, 0 },
+			.extent = swapchain.extent,
+		},
+
+		.pClearValues = &clear_color,
+	};
+
+	VkViewport viewport = {
+		.x = 0.0, .y = 0.0,
+		.width  = (f32)swapchain.extent.width,
+		.height = (f32)swapchain.extent.height,
+		.minDepth = 0.0,
+		.maxDepth = 1.0,
+	};
+
+	VkRect2D scissor = {
+		.offset = { 0, 0 },
+		.extent = swapchain.extent,
+	};
+
+	vkCmdBeginRenderPass(command_buffer, &renderpass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
+	vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+	vkCmdSetViewport(command_buffer, 0, 1, &viewport);
+	vkCmdSetScissor(command_buffer,  0, 1, &scissor);
+	vkCmdDraw(command_buffer, 3, 1, 0, 0);
+	vkCmdEndRenderPass(command_buffer);
+
+	vk_result = vkEndCommandBuffer(command_buffer);
+	Assert(vk_result == VK_SUCCESS);
+}
+
+static VkSemaphore CreateSemaphore() {
+	VkSemaphore result;
+
+	VkSemaphoreCreateInfo semaphore_info = {
+		.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+		.flags = 0,
+	};
+
+	VkResult vk_result = vkCreateSemaphore(device, &semaphore_info, null, &result);
+	Assert(vk_result == VK_SUCCESS);
+
+ 	return result;
+}
+
+static VkFence CreateFence(bool signalled = false) {
+	VkFence result;
+
+	VkFenceCreateInfo fence_info = {
+		.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+		.flags = 0,
+	};
+
+	if (signalled)
+		fence_info.flags |= VK_FENCE_CREATE_SIGNALED_BIT;
+
+	VkResult vk_result = vkCreateFence(device, &fence_info, null, &result);
+	Assert(vk_result == VK_SUCCESS);
+
+	return result;
+}
+
+static void DrawFrame() {
+	vkWaitForFences(device, 1, &inflight_fence, true, -1);
+	vkResetFences(device,   1, &inflight_fence);
+
+	u32 image = swapchain.GetNextImageIndex(device, image_available_semaphore);
+
+	vkResetCommandBuffer(command_buffer, 0);
+	RecordCommandBuffer(command_buffer, image);
+
+	// Wait for an image before rendering colors.
+	VkSemaphore          wait_semaphores[] = { image_available_semaphore                     };
+	VkPipelineStageFlags wait_stages[]     = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+
+	// Semaphores to signal when we're done rendering the frame.
+	VkSemaphore signal_semaphores[] = { render_finished_semaphore };
+
+	VkSubmitInfo submit_info = {
+		.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+		.waitSemaphoreCount = 1,
+		.pWaitSemaphores = wait_semaphores,
+		.pWaitDstStageMask = wait_stages,
+
+		.pCommandBuffers = &command_buffer,
+		.commandBufferCount = 1,
+
+		.signalSemaphoreCount = 1,
+		.pSignalSemaphores = signal_semaphores,
+	};
+
+	VkResult vk_result = vkQueueSubmit(general_queue->vk, 1, &submit_info, inflight_fence);
+	Assert(vk_result == VK_SUCCESS);
+
+	VkPresentInfoKHR present_info = {
+		.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+		.waitSemaphoreCount = 1,
+		.pWaitSemaphores = signal_semaphores,
+		.swapchainCount = 1,
+		.pSwapchains = &swapchain.handle,
+		.pImageIndices = &image,
+		.pResults = null,
+	};
+
+	vk_result = vkQueuePresentKHR(general_queue->vk, &present_info);
+}
+
 int main(int argc, char** argv) {
 	InitWindowSystem();
 
@@ -600,18 +761,29 @@ int main(int argc, char** argv) {
 	frag = LoadShader("frag.spv");
 
 	CreateRenderPass();
+	CreatePipeline();
+
 	swapchain.InitFrameBuffers(device, renderpass);
 	CreateCommandPool();
+	command_buffer = CreateCommandBuffer();
 
-	CreatePipeline();
+	image_available_semaphore = CreateSemaphore();
+	render_finished_semaphore = CreateSemaphore();
+	inflight_fence = CreateFence(true);
+
 
 	while (!window.ShouldClose()) {
 		window.Update();
+
+		DrawFrame();
 
 		standard_output_buffer.Flush();
 	}
 
 	Print("Terminating...\n");
+	vkDestroySemaphore(device, image_available_semaphore, null);
+	vkDestroySemaphore(device, render_finished_semaphore, null);
+	vkDestroyFence(device, inflight_fence, null);
 	vkDestroyCommandPool(device, command_pool, null);
 	vkDestroyRenderPass(device, renderpass, null);
 	vkDestroyPipelineLayout(device, pipeline_layout, null);

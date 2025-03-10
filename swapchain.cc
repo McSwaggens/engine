@@ -120,6 +120,12 @@ void Swapchain::InitFrameBuffers(VkDevice device, VkRenderPass renderpass) {
 	}
 }
 
+u32 Swapchain::GetNextImageIndex(VkDevice device, VkSemaphore image_available) {
+	u32 index;
+	vkAcquireNextImageKHR(device, handle, -1, image_available, VK_NULL_HANDLE, &index);
+	return index;
+}
+
 void Swapchain::Destroy(VkDevice device) {
 	vkDestroySwapchainKHR(device, handle, null); // Destroys images.
 	images.Reset();
