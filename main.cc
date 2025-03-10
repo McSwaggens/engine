@@ -494,6 +494,29 @@ static Swapchain CreateSwapchain(Window* window) {
 static void CreatePipeline() {
 }
 
+static VkShaderModule LoadShader(String path) {
+	VkShaderModule module;
+
+	Print("Loading shader module: \"%\"\n", path);
+
+	Array<byte> code = LoadFile(path);
+	Assert(code.length);
+	Assert((code.length & 3) == 0);
+
+	VkShaderModuleCreateInfo create_info = {
+		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+		.pCode    = (u32*)code.data,
+		.codeSize = code.length,
+	};
+
+	VkResult result = vkCreateShaderModule(device, &create_info, null, &module);
+	Assert(result == VK_SUCCESS);
+
+	code.Free();
+
+	return module;
+}
+
 int main(int argc, char** argv) {
 	InitWindowSystem();
 
@@ -510,14 +533,8 @@ int main(int argc, char** argv) {
 
 	swapchain = CreateSwapchain(&window);
 
-	Array<byte> vert_spv = LoadFile("vert.spv");
-	Array<byte> frag_spv = LoadFile("frag.spv");
-
-	LogVar(frag_spv.length);
-	LogVar(vert_spv.length);
-
-	Assert(frag_spv.length);
-	Assert(vert_spv.length);
+	VkShaderModule vert = LoadShader("vert.spv");
+	VkShaderModule frag = LoadShader("frag.spv");
 
 	while (!window.ShouldClose()) {
 		window.Update();

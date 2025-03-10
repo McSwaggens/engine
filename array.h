@@ -11,6 +11,10 @@ struct Array {
 
 	T* begin() { return data; }
 	T* end()   { return data + length; }
+
+	void Free() {
+		FreeMemory(data, length);
+	}
 };
 
 #endif // ARRAY_H
