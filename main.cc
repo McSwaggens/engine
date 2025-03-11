@@ -32,7 +32,6 @@ static VkShaderModule frag;
 static VkRenderPass renderpass;
 static VkPipelineLayout pipeline_layout;
 static VkPipeline pipeline;
-static VkCommandPool command_pool;
 static VkCommandBuffer command_buffer;
 static VkSemaphore image_available_semaphore;
 static VkSemaphore render_finished_semaphore;
@@ -331,35 +330,6 @@ static void CreatePipeline() {
 	Assert(vk_result == VK_SUCCESS);
 }
 
-static void CreateCommandPool() {
-	Print("Creating command pool...\n");
-
-	VkCommandPoolCreateInfo command_pool_info = {
-		.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-		.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT, // Individual buffer recreation.
-		.queueFamilyIndex = device.general_queue->family, // Graphics queue
-	};
-
-	VkResult vk_result = vkCreateCommandPool(device.logical_device, &command_pool_info, null, &command_pool);
-	Assert(vk_result == VK_SUCCESS);
-}
-
-static VkCommandBuffer CreateCommandBuffer() {
-	VkCommandBuffer result;
-
-	VkCommandBufferAllocateInfo alloc_info = {
-		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-		.commandPool = command_pool,
-		.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-		.commandBufferCount = 1,
-	};
-
-	VkResult vk_result = vkAllocateCommandBuffers(device.logical_device, &alloc_info, &result);
-	Assert(vk_result == VK_SUCCESS);
-
-	return result;
-}
-
 static void RecordCommandBuffer(VkCommandBuffer command_buffer, u32 image_index) {
 	VkCommandBufferBeginInfo begin_info = {
 		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -410,37 +380,6 @@ static void RecordCommandBuffer(VkCommandBuffer command_buffer, u32 image_index)
 
 	vk_result = vkEndCommandBuffer(command_buffer);
 	Assert(vk_result == VK_SUCCESS);
-}
-
-static VkSemaphore CreateSemaphore() {
-	VkSemaphore result;
-
-	VkSemaphoreCreateInfo semaphore_info = {
-		.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
-		.flags = 0,
-	};
-
-	VkResult vk_result = vkCreateSemaphore(device.logical_device, &semaphore_info, null, &result);
-	Assert(vk_result == VK_SUCCESS);
-
- 	return result;
-}
-
-static VkFence CreateFence(bool signalled = false) {
-	VkFence result;
-
-	VkFenceCreateInfo fence_info = {
-		.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
-		.flags = 0,
-	};
-
-	if (signalled)
-		fence_info.flags |= VK_FENCE_CREATE_SIGNALED_BIT;
-
-	VkResult vk_result = vkCreateFence(device.logical_device, &fence_info, null, &result);
-	Assert(vk_result == VK_SUCCESS);
-
-	return result;
 }
 
 static void DrawFrame() {
@@ -509,12 +448,11 @@ int main(int argc, char** argv) {
 	CreatePipeline();
 
 	swapchain.InitFrameBuffers(renderpass);
-	CreateCommandPool();
-	command_buffer = CreateCommandBuffer();
+	command_buffer = device.CreateCommandBuffer();
 
-	image_available_semaphore = CreateSemaphore();
-	render_finished_semaphore = CreateSemaphore();
-	inflight_fence = CreateFence(true);
+	image_available_semaphore = device.CreateSemaphore();
+	render_finished_semaphore = device.CreateSemaphore();
+	inflight_fence = device.CreateFence(true);
 
 
 	while (!window.ShouldClose()) {
@@ -531,7 +469,6 @@ int main(int argc, char** argv) {
 	vkDestroySemaphore(device.logical_device, image_available_semaphore, null);
 	vkDestroySemaphore(device.logical_device, render_finished_semaphore, null);
 	vkDestroyFence(device.logical_device, inflight_fence, null);
-	vkDestroyCommandPool(device.logical_device, command_pool, null);
 	vkDestroyRenderPass(device.logical_device, renderpass, null);
 	vkDestroyPipelineLayout(device.logical_device, pipeline_layout, null);
 	vkDestroyPipeline(device.logical_device, pipeline, null);

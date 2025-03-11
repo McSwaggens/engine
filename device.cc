@@ -49,6 +49,7 @@ void Device::Init(VkPhysicalDevice pdev, QueueFamilyTable qft) {
 
 	// @todo Set name
 	general_queue = CreateQueue(queue_family_table.graphics);
+	InitCommandPool();
 }
 
 static FixedAllocator<Queue, 32> queues;
@@ -69,7 +70,66 @@ Queue* Device::CreateQueue(u32 family_index) {
 	return queue;
 }
 
+VkSemaphore Device::CreateSemaphore() {
+	VkSemaphore result;
+
+	VkSemaphoreCreateInfo semaphore_info = {
+		.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+		.flags = 0,
+	};
+
+	VkResult vk_result = vkCreateSemaphore(logical_device, &semaphore_info, null, &result);
+	Assert(vk_result == VK_SUCCESS);
+
+ 	return result;
+}
+
+VkFence Device::CreateFence(bool signalled) {
+	VkFence result;
+
+	VkFenceCreateInfo fence_info = {
+		.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+		.flags = 0,
+	};
+
+	if (signalled)
+		fence_info.flags |= VK_FENCE_CREATE_SIGNALED_BIT;
+
+	VkResult vk_result = vkCreateFence(logical_device, &fence_info, null, &result);
+	Assert(vk_result == VK_SUCCESS);
+
+	return result;
+}
+
+void Device::InitCommandPool() {
+	VkCommandPoolCreateInfo command_pool_info = {
+		.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+		.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT, // Individual buffer recreation.
+		.queueFamilyIndex = device.general_queue->family, // Graphics queue
+	};
+
+	VkResult vk_result = vkCreateCommandPool(logical_device, &command_pool_info, null, &command_pool);
+	Assert(vk_result == VK_SUCCESS);
+}
+
+VkCommandBuffer Device::CreateCommandBuffer() {
+	VkCommandBuffer result;
+
+	VkCommandBufferAllocateInfo alloc_info = {
+		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+		.commandPool = command_pool,
+		.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+		.commandBufferCount = 1,
+	};
+
+	VkResult vk_result = vkAllocateCommandBuffers(logical_device, &alloc_info, &result);
+	Assert(vk_result == VK_SUCCESS);
+
+	return result;
+}
+
 void Device::Destroy() {
+	vkDestroyCommandPool(logical_device, command_pool, null);
 	vkDestroyDevice(logical_device, null);
 }
 
