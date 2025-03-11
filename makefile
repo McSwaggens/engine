@@ -30,5 +30,4 @@ run_linux: program_linux_xxx shaders
 	./program
 
 
-run: run_macos
-	;
+run: run_linux
