@@ -6,8 +6,6 @@
 #include "device.h"
 
 static Swapchain CreateSwapchain(Window* window) {
-	Print("Creating swapchain...\n");
-
 	SwapchainSupportInfo swapchain_info = QuerySwapchainSupportInfo(device.physical_device, window->surface);
 	VkPresentModeKHR present_mode = swapchain_info.ChoosePresentMode();
 	VkSurfaceFormatKHR surface_format = swapchain_info.ChooseFormat();

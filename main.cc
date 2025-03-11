@@ -5,6 +5,7 @@
 
 #include "math.h"
 #include "window.h"
+#include "os.h"
 
 #include "assert.cc"
 #include "alloc.cc"
@@ -36,6 +37,22 @@ static VkCommandBuffer command_buffer;
 static VkSemaphore image_available_semaphore;
 static VkSemaphore render_finished_semaphore;
 static VkFence inflight_fence;
+
+static u64 frame_counter = 0;
+static f64 time          = 0.0;
+static u64 time_us       = 0;
+static u64 init_time_us  = 0;
+static u64 fps = 0;
+
+static void InitTime() {
+	init_time_us = GetTimeMicroseconds();
+	time_us = init_time_us;
+}
+
+static void UpdateTime() {
+	time_us = GetTimeMicroseconds();
+	time = (time_us - init_time_us) / 1'000'000.0;
+}
 
 static VkShaderModule LoadShader(String path) {
 	VkShaderModule module;
@@ -384,10 +401,11 @@ static void DrawFrame() {
 }
 
 int main(int argc, char** argv) {
+	Print("Initializing...\n");
+
+	InitTime();
 	InitWindowSystem();
-
 	window = CreateWindow();
-
 	vk_helper.Init();
 	window.InitSurface();
 
@@ -410,12 +428,31 @@ int main(int argc, char** argv) {
 	render_finished_semaphore = device.CreateSemaphore();
 	inflight_fence = device.CreateFence(true);
 
+	Print("Running...\n");
+
+	UpdateTime();
+
+	f64 last_frame_time = time;
+	f64 last_second_time = time;
+	u64 last_second_frame_counter = 0;
 
 	while (!window.ShouldClose()) {
+		UpdateTime();
 		window.Update();
+
+		if (time - last_second_time >= 1.0) {
+			last_second_time = time;
+
+			fps = frame_counter - last_second_frame_counter;
+			last_second_frame_counter = frame_counter;
+
+			LogVar(fps);
+		}
 
 		DrawFrame();
 
+		frame_counter++;
+		last_frame_time = time;
 		standard_output_buffer.Flush();
 	}
 

@@ -126,12 +126,12 @@ VkCommandBuffer Device::CreateCommandBuffer() {
 	return result;
 }
 
+void Device::WaitIdle() {
+	vkDeviceWaitIdle(logical_device);
+}
+
 void Device::Destroy() {
 	vkDestroyCommandPool(logical_device, command_pool, null);
 	vkDestroyDevice(logical_device, null);
-}
-
-void Device::WaitIdle() {
-	vkDeviceWaitIdle(logical_device);
 }
 

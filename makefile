@@ -2,7 +2,7 @@ program_xxx: *.cc *.h shaders
 	clang \
 		main.cc \
 		-O0 -g3 \
-		-lglfw -lvulkan \
+		-lglfw -lvulkan -lm \
 		-std=c++20 \
 		-Wno-writable-strings -Wno-reorder-init-list -Wno-vla-cxx-extension \
 		-DMACOS=0 \

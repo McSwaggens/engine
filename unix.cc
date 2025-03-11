@@ -3,6 +3,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/mman.h>
+#include <sys/time.h>
 #include <stdlib.h>
 
 static void* AllocPages(u64 size) {
@@ -12,6 +13,14 @@ static void* AllocPages(u64 size) {
 
 static void FreePages(void* p, u64 size) {
 	munmap(p, size);
+}
+
+static u64 GetTimeMicroseconds() {
+	timeval tv;
+	gettimeofday(&tv, null);
+	u64 seconds = tv.tv_sec * 1000000llu;
+	u64 micros  = tv.tv_usec;
+	return seconds + micros;
 }
 
 static void ExitProgram() {
