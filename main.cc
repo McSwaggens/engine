@@ -9,13 +9,6 @@ static VkInstance vk;
 
 #define LogVar(var) Print("%:%: note: " #var " = %\n", CString(__FILE__), __LINE__, var)
 
-#include "vector.h"
-#include "quaternion.h"
-
-#include "list.h"
-
-#include "swapchain.h"
-
 #include "assert.cc"
 #include "alloc.cc"
 #include "unix.cc"
@@ -23,52 +16,20 @@ static VkInstance vk;
 #include "print.cc"
 #include "file_system.cc"
 #include "swapchain.cc"
+#include "device.cc"
+#include "queue.cc"
 
 #include "vk_helper.h"
+#include "vector.h"
+#include "quaternion.h"
+#include "list.h"
+#include "swapchain.h"
+#include "fixed_allocator.h"
+#include "device.h"
 
-struct Queue {
-	VkQueue vk;
-	u32 index;
-	u32 family;
-};
-
-template<typename T, u32 N>
-struct FixedAllocator {
-	T stack[N];
-	u32 head = 0;
-
-	T* Next() {
-		Assert(head < N);
-		return &stack[head++];
-	}
-
-	T* begin() { return stack; }
-	T* end()   { return stack + head; }
-};
-
-struct QueueFamilyTable {
-	u32 graphics = -1;
-	u32 compute  = -1;
-	u32 transfer = -1;
-	u32 present  = -1;
-
-	bool IsComplete() {
-		if (graphics == -1) return false;
-		if (compute  == -1) return false;
-		if (transfer == -1) return false;
-		if (present  == -1) return false;
-		return true;
-	}
-};
-
-static VkPhysicalDevice physical_device;
-static VkDevice device;
 static List<VkLayerProperties> vk_layers;
 static List<VkPhysicalDevice> physical_devices;
 static List<const char*> vk_enabled_extensions;
-static FixedAllocator<Queue, 32> queues;
-static Queue* general_queue;
-static QueueFamilyTable queue_family_table;
 static Window window;
 static Swapchain swapchain;
 static VkShaderModule vert;
@@ -81,12 +42,6 @@ static VkCommandBuffer command_buffer;
 static VkSemaphore image_available_semaphore;
 static VkSemaphore render_finished_semaphore;
 static VkFence inflight_fence;
-
-static const char* vk_enabled_layers[] = {
-	"VK_LAYER_KHRONOS_validation",
-};
-
-static u32 vk_enabled_layer_count = sizeof(vk_enabled_layers) / sizeof(*vk_enabled_layers);
 
 void QueryValidationLayers() {
 	u32 layer_count;
@@ -141,12 +96,12 @@ static void InitVulkan() {
 		Print("\t%\n", CString(ext));
 
 	VkApplicationInfo app_info = {
-		.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
-		.pApplicationName = "Engine",
+		.sType              = VK_STRUCTURE_TYPE_APPLICATION_INFO,
+		.pApplicationName   = "Engine",
 		.applicationVersion = VK_MAKE_VERSION(1, 0, 0),
-		.pEngineName = "xxx",
-		.engineVersion = VK_MAKE_VERSION(1, 0, 0),
-		.apiVersion = VK_API_VERSION_1_4,
+		.pEngineName        = "xxx",
+		.engineVersion      = VK_MAKE_VERSION(1, 0, 0),
+		.apiVersion         = VK_API_VERSION_1_4,
 	};
 
 	QueryValidationLayers();
@@ -183,45 +138,6 @@ static List<VkPhysicalDevice> QueryPhysicalDevices() {
 	return result;
 }
 
-static bool CanQueueFamilyPresent(VkPhysicalDevice pdev, VkSurfaceKHR surface, u32 family) {
-	VkBool32 can_present = false;
-	vkGetPhysicalDeviceSurfaceSupportKHR(pdev, family, surface, &can_present);
-	return can_present;
-}
-
-static QueueFamilyTable QueryQueueFamilyTable(VkPhysicalDevice pdev) {
-	u32 count;
-	vkGetPhysicalDeviceQueueFamilyProperties(pdev, &count, null);
-
-	VkQueueFamilyProperties queue_props[count];
-	vkGetPhysicalDeviceQueueFamilyProperties(pdev, &count, queue_props);
-
-	QueueFamilyTable result;
-
-	u32 all = VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT;
-	for (u32 i = 0; i < count; i++) {
-		VkQueueFamilyProperties* props = &queue_props[i];
-
-		u32 feature_count = PopCount(props->queueFlags);
-
-		if ((props->queueFlags & VK_QUEUE_GRAPHICS_BIT) && result.graphics == -1)
-			result.graphics = i;
-
-		if ((props->queueFlags & VK_QUEUE_COMPUTE_BIT)  && result.compute  == -1)
-			result.compute = i;
-
-		if ((props->queueFlags & VK_QUEUE_TRANSFER_BIT) && result.transfer == -1)
-			result.transfer = i;
-
-		bool can_present = CanQueueFamilyPresent(pdev, window.surface, i);
-
-		if (can_present && result.present == -1)
-			result.present = i;
-	}
-
-	return result;
-}
-
 static bool IsPhysicalDeviceGood(VkPhysicalDevice pdev) {
 	VkPhysicalDeviceProperties props;
 	vkGetPhysicalDeviceProperties(pdev, &props);
@@ -234,7 +150,7 @@ static bool IsPhysicalDeviceGood(VkPhysicalDevice pdev) {
 		props.deviceType != VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)
 		return false;
 
-	QueueFamilyTable queue_table = QueryQueueFamilyTable(pdev);
+	QueueFamilyTable queue_table = QueryQueueFamilyTable(pdev, &window);
 	if (!queue_table.IsComplete())
 		return false;
 
@@ -262,74 +178,6 @@ static VkPhysicalDevice FindPhysicalDevice() {
 	return null;
 }
 
-static VkDevice CreateLogicalDevice(VkPhysicalDevice pdev) {
-	Print("Creating logical device...\n");
-
-	float priority = 1.0;
-	standard_output_buffer.Flush();
-	VkDeviceQueueCreateInfo queue_create_info = {
-		.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-		.queueFamilyIndex = queue_family_table.graphics,
-		.queueCount = 1,
-		.pQueuePriorities = &priority,
-	};
-
-	VkPhysicalDeviceFeatures features = {
-	};
-
-	List<const char*> ldev_extension_names;
-	ldev_extension_names.Add(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
-#ifdef MACOS
-	ldev_extension_names.Add("VK_KHR_portability_subset");
-#endif
-
-	Print("Device extensions:\n");
-	for (const char* ext_name : ldev_extension_names)
-		Print("\t%\n", CString(ext_name));
-
-	VkDeviceCreateInfo device_create_info = {
-		.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-
-		.pQueueCreateInfos = &queue_create_info,
-		.queueCreateInfoCount = 1,
-
-		.pEnabledFeatures = &features,
-
-		.ppEnabledExtensionNames = ldev_extension_names.elements,
-		.enabledExtensionCount   = ldev_extension_names.count,
-
-		.ppEnabledLayerNames = vk_enabled_layers,
-		.enabledLayerCount   = vk_enabled_layer_count,
-	};
-
-
-	VkDevice dev;
-	VkResult result = vkCreateDevice(pdev, &device_create_info, null, &dev);
-	LogVar(ToString(result));
-	Assert(result == VK_SUCCESS);
-
-	ldev_extension_names.Free();
-
-	return dev;
-}
-
-static Queue* CreateQueue(u32 family_index) {
-	for (auto& queue : queues)
-		if (queue.family == family_index)
-			return &queue;
-
-	VkQueue vk;
-	vkGetDeviceQueue(device, family_index, family_index, &vk);
-
-	Queue* queue = queues.Next();
-	*queue = {
-		.family = family_index,
-		.vk = vk,
-	};
-
-	return queue;
-}
-
 static VkShaderModule LoadShader(String path) {
 	VkShaderModule module;
 
@@ -345,7 +193,7 @@ static VkShaderModule LoadShader(String path) {
 		.codeSize = code.length,
 	};
 
-	VkResult result = vkCreateShaderModule(device, &create_info, null, &module);
+	VkResult result = vkCreateShaderModule(device.logical_device, &create_info, null, &module);
 	Assert(result == VK_SUCCESS);
 
 	code.Free();
@@ -409,7 +257,7 @@ static void CreateRenderPass() {
 		.pDependencies   = &dependency,
 	};
 
-	VkResult vk_result = vkCreateRenderPass(device, &renderpass_info, null, &renderpass);
+	VkResult vk_result = vkCreateRenderPass(device.logical_device, &renderpass_info, null, &renderpass);
 	Assert(vk_result == VK_SUCCESS);
 }
 
@@ -552,7 +400,7 @@ static void CreatePipeline() {
 		.pushConstantRangeCount = 0,
 	};
 
-	VkResult vk_result = vkCreatePipelineLayout(device, &pipeline_layout_info, null, &pipeline_layout);
+	VkResult vk_result = vkCreatePipelineLayout(device.logical_device, &pipeline_layout_info, null, &pipeline_layout);
 	Assert(vk_result == VK_SUCCESS);
 
 	VkGraphicsPipelineCreateInfo pipeline_info = {
@@ -581,7 +429,7 @@ static void CreatePipeline() {
 		.basePipelineIndex  = -1,
 	};
 
-	vk_result = vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipeline_info, null, &pipeline);
+	vk_result = vkCreateGraphicsPipelines(device.logical_device, VK_NULL_HANDLE, 1, &pipeline_info, null, &pipeline);
 	Assert(vk_result == VK_SUCCESS);
 }
 
@@ -591,10 +439,10 @@ static void CreateCommandPool() {
 	VkCommandPoolCreateInfo command_pool_info = {
 		.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
 		.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT, // Individual buffer recreation.
-		.queueFamilyIndex = general_queue->family, // Graphics queue
+		.queueFamilyIndex = device.general_queue->family, // Graphics queue
 	};
 
-	VkResult vk_result = vkCreateCommandPool(device, &command_pool_info, null, &command_pool);
+	VkResult vk_result = vkCreateCommandPool(device.logical_device, &command_pool_info, null, &command_pool);
 	Assert(vk_result == VK_SUCCESS);
 }
 
@@ -608,7 +456,7 @@ static VkCommandBuffer CreateCommandBuffer() {
 		.commandBufferCount = 1,
 	};
 
-	VkResult vk_result = vkAllocateCommandBuffers(device, &alloc_info, &result);
+	VkResult vk_result = vkAllocateCommandBuffers(device.logical_device, &alloc_info, &result);
 	Assert(vk_result == VK_SUCCESS);
 
 	return result;
@@ -674,7 +522,7 @@ static VkSemaphore CreateSemaphore() {
 		.flags = 0,
 	};
 
-	VkResult vk_result = vkCreateSemaphore(device, &semaphore_info, null, &result);
+	VkResult vk_result = vkCreateSemaphore(device.logical_device, &semaphore_info, null, &result);
 	Assert(vk_result == VK_SUCCESS);
 
  	return result;
@@ -691,17 +539,17 @@ static VkFence CreateFence(bool signalled = false) {
 	if (signalled)
 		fence_info.flags |= VK_FENCE_CREATE_SIGNALED_BIT;
 
-	VkResult vk_result = vkCreateFence(device, &fence_info, null, &result);
+	VkResult vk_result = vkCreateFence(device.logical_device, &fence_info, null, &result);
 	Assert(vk_result == VK_SUCCESS);
 
 	return result;
 }
 
 static void DrawFrame() {
-	vkWaitForFences(device, 1, &inflight_fence, true, -1);
-	vkResetFences(device,   1, &inflight_fence);
+	vkWaitForFences(device.logical_device, 1, &inflight_fence, true, -1);
+	vkResetFences(device.logical_device,   1, &inflight_fence);
 
-	u32 image = swapchain.GetNextImageIndex(device, image_available_semaphore);
+	u32 image = swapchain.GetNextImageIndex(image_available_semaphore);
 
 	vkResetCommandBuffer(command_buffer, 0);
 	RecordCommandBuffer(command_buffer, image);
@@ -726,7 +574,7 @@ static void DrawFrame() {
 		.pSignalSemaphores = signal_semaphores,
 	};
 
-	VkResult vk_result = vkQueueSubmit(general_queue->vk, 1, &submit_info, inflight_fence);
+	VkResult vk_result = vkQueueSubmit(device.general_queue->vk, 1, &submit_info, inflight_fence);
 	Assert(vk_result == VK_SUCCESS);
 
 	VkPresentInfoKHR present_info = {
@@ -739,7 +587,7 @@ static void DrawFrame() {
 		.pResults = null,
 	};
 
-	vk_result = vkQueuePresentKHR(general_queue->vk, &present_info);
+	vk_result = vkQueuePresentKHR(device.general_queue->vk, &present_info);
 }
 
 int main(int argc, char** argv) {
@@ -750,13 +598,11 @@ int main(int argc, char** argv) {
 	InitVulkan();
 	window.InitSurface();
 
-	physical_device = FindPhysicalDevice();
-	queue_family_table = QueryQueueFamilyTable(physical_device);
-	device = CreateLogicalDevice(physical_device);
+	VkPhysicalDevice physical_device = FindPhysicalDevice();
+	QueueFamilyTable qft = QueryQueueFamilyTable(physical_device, &window);
 
-	general_queue = CreateQueue(queue_family_table.graphics);
-
-	swapchain = CreateSwapchain(physical_device, device, &window);
+	device.Init(physical_device, qft);
+	swapchain = CreateSwapchain(&window);
 
 	vert = LoadShader("vert.spv");
 	frag = LoadShader("frag.spv");
@@ -764,7 +610,7 @@ int main(int argc, char** argv) {
 	CreateRenderPass();
 	CreatePipeline();
 
-	swapchain.InitFrameBuffers(device, renderpass);
+	swapchain.InitFrameBuffers(renderpass);
 	CreateCommandPool();
 	command_buffer = CreateCommandBuffer();
 
@@ -781,21 +627,21 @@ int main(int argc, char** argv) {
 		standard_output_buffer.Flush();
 	}
 
-	vkDeviceWaitIdle(device);
+	device.WaitIdle();
 
 	Print("Terminating...\n");
-	vkDestroySemaphore(device, image_available_semaphore, null);
-	vkDestroySemaphore(device, render_finished_semaphore, null);
-	vkDestroyFence(device, inflight_fence, null);
-	vkDestroyCommandPool(device, command_pool, null);
-	vkDestroyRenderPass(device, renderpass, null);
-	vkDestroyPipelineLayout(device, pipeline_layout, null);
-	vkDestroyPipeline(device, pipeline, null);
-	vkDestroyShaderModule(device, vert, null);
-	vkDestroyShaderModule(device, frag, null);
-	swapchain.Destroy(device);
+	vkDestroySemaphore(device.logical_device, image_available_semaphore, null);
+	vkDestroySemaphore(device.logical_device, render_finished_semaphore, null);
+	vkDestroyFence(device.logical_device, inflight_fence, null);
+	vkDestroyCommandPool(device.logical_device, command_pool, null);
+	vkDestroyRenderPass(device.logical_device, renderpass, null);
+	vkDestroyPipelineLayout(device.logical_device, pipeline_layout, null);
+	vkDestroyPipeline(device.logical_device, pipeline, null);
+	vkDestroyShaderModule(device.logical_device, vert, null);
+	vkDestroyShaderModule(device.logical_device, frag, null);
+	swapchain.Destroy();
 	window.Destroy();
-	vkDestroyDevice(device, null);
+	device.Destroy();
 	vkDestroyInstance(vk, null);
 	glfwTerminate();
 

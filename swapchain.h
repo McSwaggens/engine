@@ -17,11 +17,11 @@ struct Swapchain {
 
 	List<VkFramebuffer> framebuffers;
 
-	void InitImages(VkDevice device);
-	void InitViews(VkDevice device);
-	void InitFrameBuffers(VkDevice device, VkRenderPass renderpass);
-	u32 GetNextImageIndex(VkDevice device, VkSemaphore image_available);
-	void Destroy(VkDevice device);
+	void InitImages();
+	void InitViews();
+	void InitFrameBuffers(VkRenderPass renderpass);
+	u32 GetNextImageIndex(VkSemaphore image_available);
+	void Destroy();
 };
 
 static Swapchain CreateSwapchain(Window* window);

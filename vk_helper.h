@@ -3,6 +3,12 @@
 
 #include "string.h"
 
+static const char* vk_enabled_layers[] = {
+	"VK_LAYER_KHRONOS_validation",
+};
+
+static u32 vk_enabled_layer_count = sizeof(vk_enabled_layers) / sizeof(*vk_enabled_layers);
+
 static String ToString(VkResult result) {
 	switch (result) {
 		case VK_SUCCESS:                                            return "VK_SUCCESS";

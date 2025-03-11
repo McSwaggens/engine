@@ -3,10 +3,12 @@
 #include "vk_helper.h"
 #include "print.h"
 
-static Swapchain CreateSwapchain(VkPhysicalDevice physical_device, VkDevice device, Window* window) {
+#include "device.h"
+
+static Swapchain CreateSwapchain(Window* window) {
 	Print("Creating swapchain...\n");
 
-	SwapchainSupportInfo swapchain_info = QuerySwapchainSupportInfo(physical_device, window->surface);
+	SwapchainSupportInfo swapchain_info = QuerySwapchainSupportInfo(device.physical_device, window->surface);
 	VkPresentModeKHR present_mode = swapchain_info.ChoosePresentMode();
 	VkSurfaceFormatKHR surface_format = swapchain_info.ChooseFormat();
 	VkExtent2D extent = swapchain_info.GetExtent(window);
@@ -35,7 +37,7 @@ static Swapchain CreateSwapchain(VkPhysicalDevice physical_device, VkDevice devi
 	};
 
 	VkSwapchainKHR handle;
-	VkResult result = vkCreateSwapchainKHR(device, &swapchain_create_info, null, &handle);
+	VkResult result = vkCreateSwapchainKHR(device.logical_device, &swapchain_create_info, null, &handle);
 	Assert(result == VK_SUCCESS);
 
 	Swapchain swapchain = {
@@ -44,24 +46,24 @@ static Swapchain CreateSwapchain(VkPhysicalDevice physical_device, VkDevice devi
 		.extent = extent,
 	};
 
-	swapchain.InitImages(device);
-	swapchain.InitViews(device);
+	swapchain.InitImages();
+	swapchain.InitViews();
 	swapchain_info.Free();
 
 	return swapchain;
 }
 
-void Swapchain::InitImages(VkDevice device) {
+void Swapchain::InitImages() {
 	images.Reset();
 
 	u32 image_count;
-	vkGetSwapchainImagesKHR(device, handle, &image_count, null);
+	vkGetSwapchainImagesKHR(device.logical_device, handle, &image_count, null);
 
 	images.AssureCount(image_count);
-	vkGetSwapchainImagesKHR(device, handle, &image_count, images.elements);
+	vkGetSwapchainImagesKHR(device.logical_device, handle, &image_count, images.elements);
 }
 
-void Swapchain::InitViews(VkDevice device) {
+void Swapchain::InitViews() {
 	views.Reset();
 	views.AssureCount(images.count);
 
@@ -90,11 +92,11 @@ void Swapchain::InitViews(VkDevice device) {
 			},
 		};
 
-		vkCreateImageView(device, &image_view_create_info, null, &views[i]);
+		vkCreateImageView(device.logical_device, &image_view_create_info, null, &views[i]);
 	}
 }
 
-void Swapchain::InitFrameBuffers(VkDevice device, VkRenderPass renderpass) {
+void Swapchain::InitFrameBuffers(VkRenderPass renderpass) {
 	framebuffers.AssureCount(images.count);
 
 	for (u32 i = 0; i < images.count; i++) {
@@ -115,26 +117,26 @@ void Swapchain::InitFrameBuffers(VkDevice device, VkRenderPass renderpass) {
 			.layers = 1,
 		};
 
-		VkResult vk_result = vkCreateFramebuffer(device, &framebuffer_info, null, &framebuffers[i]);
+		VkResult vk_result = vkCreateFramebuffer(device.logical_device, &framebuffer_info, null, &framebuffers[i]);
 		Assert(vk_result == VK_SUCCESS);
 	}
 }
 
-u32 Swapchain::GetNextImageIndex(VkDevice device, VkSemaphore image_available) {
+u32 Swapchain::GetNextImageIndex(VkSemaphore image_available) {
 	u32 index;
-	vkAcquireNextImageKHR(device, handle, -1, image_available, VK_NULL_HANDLE, &index);
+	vkAcquireNextImageKHR(device.logical_device, handle, -1, image_available, VK_NULL_HANDLE, &index);
 	return index;
 }
 
-void Swapchain::Destroy(VkDevice device) {
-	vkDestroySwapchainKHR(device, handle, null); // Destroys images.
+void Swapchain::Destroy() {
+	vkDestroySwapchainKHR(device.logical_device, handle, null); // Destroys images.
 	images.Reset();
 
 	for (VkFramebuffer framebuffer : framebuffers)
-		vkDestroyFramebuffer(device, framebuffer, null);
+		vkDestroyFramebuffer(device.logical_device, framebuffer, null);
 
 	for (VkImageView view : views)
-		vkDestroyImageView(device, view, null);
+		vkDestroyImageView(device.logical_device, view, null);
 	views.Reset();
 }
 
