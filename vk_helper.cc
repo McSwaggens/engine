@@ -12,10 +12,6 @@ List<VkLayerProperties> QueryValidationLayers() {
 	layers.AssureCount(layer_count);
 	vkEnumerateInstanceLayerProperties(&layer_count, layers.elements);
 
-	Print("Layers:\n");
-	for (auto layer : layers)
-		Print("\t%\n", CString(layer.layerName));
-
 	return layers;
 }
 
@@ -74,7 +70,7 @@ void VkHelper::Init() {
 
 	VkInstanceCreateInfo inst_info = {
 		.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-		#ifdef MACOS
+		#if MACOS
 			.flags = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR,
 		#endif
 		.pApplicationInfo = &app_info,
@@ -87,9 +83,43 @@ void VkHelper::Init() {
 	};
 
 	VkResult result = vkCreateInstance(&inst_info, null, &instance);
-	LogVar(ToString(result));
 	Assert(result == VK_SUCCESS);
 
 	physical_devices = QueryPhysicalDevices();
+}
+
+static bool IsPhysicalDeviceGood(VkPhysicalDevice pdev, Window* window) {
+	VkPhysicalDeviceProperties props;
+	vkGetPhysicalDeviceProperties(pdev, &props);
+
+	// @Todo: Score devices and pick the one with the highest score.
+	// Also need to make sure the device selected has the nessesary features present.
+	// This is good enough for now.
+
+	if (props.deviceType != VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU &&
+		props.deviceType != VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)
+		return false;
+
+	QueueFamilyTable queue_table = QueryQueueFamilyTable(pdev, window);
+	if (!queue_table.IsComplete())
+		return false;
+
+	SwapchainSupportInfo swapchain_info = QuerySwapchainSupportInfo(pdev, window->surface);
+	if (!swapchain_info.formats.count || !swapchain_info.present_modes.count) {
+		swapchain_info.Free();
+		return false;
+	}
+
+	swapchain_info.Free();
+	return true;
+}
+
+VkPhysicalDevice VkHelper::FindPhysicalDevice(Window* window) {
+	for (VkPhysicalDevice pdev : vk_helper.physical_devices)
+		if (IsPhysicalDeviceGood(pdev, window))
+			return pdev;
+
+	Assert(false);
+	return VK_NULL_HANDLE;
 }
 

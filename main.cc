@@ -37,48 +37,8 @@ static VkSemaphore image_available_semaphore;
 static VkSemaphore render_finished_semaphore;
 static VkFence inflight_fence;
 
-static bool IsPhysicalDeviceGood(VkPhysicalDevice pdev) {
-	VkPhysicalDeviceProperties props;
-	vkGetPhysicalDeviceProperties(pdev, &props);
-
-	// @Todo: Score devices and pick the one with the highest score.
-	// Also need to make sure the device selected has the nessesary features present.
-	// This is good enough for now.
-
-	if (props.deviceType != VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU &&
-		props.deviceType != VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)
-		return false;
-
-	QueueFamilyTable queue_table = QueryQueueFamilyTable(pdev, &window);
-	if (!queue_table.IsComplete())
-		return false;
-
-	SwapchainSupportInfo swapchain_info = QuerySwapchainSupportInfo(pdev, window.surface);
-	if (!swapchain_info.formats.count || !swapchain_info.present_modes.count) {
-		swapchain_info.Free();
-		return false;
-	}
-
-	Print("Using Physical Device: %\n", CString(props.deviceName));
-	swapchain_info.Free();
-	return true;
-}
-
-static VkPhysicalDevice FindPhysicalDevice() {
-	Print("Finding physical device...\n");
-
-	for (VkPhysicalDevice pdev : vk_helper.physical_devices)
-		if (IsPhysicalDeviceGood(pdev))
-			return pdev;
-
-	Assert(false);
-	return null;
-}
-
 static VkShaderModule LoadShader(String path) {
 	VkShaderModule module;
-
-	Print("Loading shader module: \"%\"...\n", path);
 
 	Array<byte> code = LoadFile(path);
 	Assert(code.length);
@@ -99,8 +59,6 @@ static VkShaderModule LoadShader(String path) {
 }
 
 static void CreateRenderPass() {
-	Print("Creating renderpass...\n");
-
 	// Make this an array?
 	VkAttachmentDescription color_attachment = {
 		.format  = swapchain.surface_format.format,
@@ -159,8 +117,6 @@ static void CreateRenderPass() {
 }
 
 static void CreatePipeline() {
-	Print("Creating pipeline...\n");
-
 	// Shaders
 	VkPipelineShaderStageCreateInfo vert_stage_info = {
 		.sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -435,7 +391,7 @@ int main(int argc, char** argv) {
 	vk_helper.Init();
 	window.InitSurface();
 
-	VkPhysicalDevice physical_device = FindPhysicalDevice();
+	VkPhysicalDevice physical_device = vk_helper.FindPhysicalDevice(&window);
 	QueueFamilyTable qft = QueryQueueFamilyTable(physical_device, &window);
 
 	device.Init(physical_device, qft);

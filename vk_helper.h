@@ -17,6 +17,7 @@ struct VkHelper {
 	List<VkPhysicalDevice> physical_devices;
 
 	void Init();
+	VkPhysicalDevice FindPhysicalDevice(Window* window);
 } static vk_helper = { };
 
 static String ToString(VkResult result) {

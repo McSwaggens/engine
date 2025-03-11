@@ -12,6 +12,7 @@ struct Device {
 	VkPhysicalDevice physical_device;
 	VkDevice         logical_device;
 	VkCommandPool    command_pool;
+	VkPhysicalDeviceProperties physical_properties;
 
 	List<const char*> enabled_extensions;
 

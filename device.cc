@@ -8,7 +8,11 @@ void Device::Init(VkPhysicalDevice pdev, QueueFamilyTable qft) {
 	physical_device = pdev;
 	queue_family_table = qft;
 
-	Print("Creating logical device...\n");
+	vkGetPhysicalDeviceProperties(physical_device, &physical_properties);
+	name = CString(physical_properties.deviceName);
+
+	Print("Using graphics card: %\n", name);
+
 	float priority = 1.0;
 	standard_output_buffer.Flush();
 	VkDeviceQueueCreateInfo queue_create_info = {
@@ -23,10 +27,6 @@ void Device::Init(VkPhysicalDevice pdev, QueueFamilyTable qft) {
 
 	enabled_extensions.Add(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
 	if (MACOS) enabled_extensions.Add("VK_KHR_portability_subset");
-
-	Print("Device extensions:\n");
-	for (const char* ext_name : enabled_extensions)
-		Print("\t%\n", CString(ext_name));
 
 	VkDeviceCreateInfo device_create_info = {
 		.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
@@ -44,10 +44,8 @@ void Device::Init(VkPhysicalDevice pdev, QueueFamilyTable qft) {
 	};
 
 	VkResult result = vkCreateDevice(physical_device, &device_create_info, null, &logical_device);
-	LogVar(ToString(result));
 	Assert(result == VK_SUCCESS);
 
-	// @todo Set name
 	general_queue = CreateQueue(queue_family_table.graphics);
 	InitCommandPool();
 }
