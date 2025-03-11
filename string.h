@@ -3,6 +3,7 @@
 
 #include "alloc.h"
 #include "assert.h"
+#include "math.h"
 
 struct String {
 	char* data   = 0;
@@ -13,6 +14,8 @@ struct String {
 	template<u32 N>
 	String(const char (&str)[N]) : data(const_cast<char*>(str)), length(N-1), capacity(0) { }
 	explicit String(const char* str, u32 length, u32 capacity) : data(const_cast<char*>(str)), length(length), capacity(capacity) { }
+
+	inline bool IsStatic() { return capacity == 0; }
 
 	const char* begin() { return data; }
 	const char* end() { return data + length; }

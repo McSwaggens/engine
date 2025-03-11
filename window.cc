@@ -1,5 +1,6 @@
 #include "window.h"
-	Vector2 GetFrameBufferSize();
+
+#include "vk_helper.h"
 
 static bool InitWindowSystem() {
 	if (!glfwInit()) return false;
@@ -15,7 +16,7 @@ static Window CreateWindow() {
 }
 
 void Window::Destroy() {
-	vkDestroySurfaceKHR(vk, surface, null);
+	vkDestroySurfaceKHR(vk_helper.instance, surface, null);
 	glfwDestroyWindow(glfw_window);
 	glfw_window = null;
 }
@@ -25,7 +26,7 @@ void Window::Update() {
 }
 
 bool Window::InitSurface() {
-	return glfwCreateWindowSurface(vk, glfw_window, null, &surface);
+	return glfwCreateWindowSurface(vk_helper.instance, glfw_window, null, &surface);
 }
 
 Vector2 Window::GetPosition() {

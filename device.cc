@@ -39,8 +39,8 @@ void Device::Init(VkPhysicalDevice pdev, QueueFamilyTable qft) {
 		.ppEnabledExtensionNames = enabled_extensions.elements,
 		.enabledExtensionCount   = enabled_extensions.count,
 
-		.ppEnabledLayerNames = vk_enabled_layers,
-		.enabledLayerCount   = vk_enabled_layer_count,
+		.ppEnabledLayerNames = vk_helper.enabled_layers.elements,
+		.enabledLayerCount   = vk_helper.enabled_layers.count,
 	};
 
 	VkResult result = vkCreateDevice(physical_device, &device_create_info, null, &logical_device);

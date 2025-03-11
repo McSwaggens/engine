@@ -5,6 +5,8 @@
 #include "file_system.h"
 #include "string.h"
 
+#define LogVar(var) Print("%:%: note: " #var " = %\n", CString(__FILE__), __LINE__, var)
+
 struct OutputBuffer;
 
 enum Base {

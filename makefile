@@ -16,3 +16,6 @@ run: program_xxx shaders
 	pkill program || true
 	DYLD_LIBRARY_PATH=/Users/daniel/VulkanSDK/1.4.304.1/macOS/lib ./program
 
+tags: *.cc *.h
+	ctags --language-force=c++ -R *.cc *.h /usr/include/vulkan/vulkan_core.h
+

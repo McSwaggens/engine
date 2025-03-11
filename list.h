@@ -16,6 +16,8 @@ struct List {
 	explicit List(T* elements, u32 count, u32 capacity) :
 		elements(elements), count(count), capacity(capacity) { }
 
+	inline bool IsStatic() { return capacity == 0; }
+
 	template<u32 N>
 	List(const T (&a)[N]) : List(static_cast<T*>(a), N, 0) { }
 

@@ -2,12 +2,9 @@
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
-static VkInstance vk;
 
 #include "math.h"
 #include "window.h"
-
-#define LogVar(var) Print("%:%: note: " #var " = %\n", CString(__FILE__), __LINE__, var)
 
 #include "assert.cc"
 #include "alloc.cc"
@@ -18,6 +15,7 @@ static VkInstance vk;
 #include "swapchain.cc"
 #include "device.cc"
 #include "queue.cc"
+#include "vk_helper.cc"
 
 #include "vk_helper.h"
 #include "vector.h"
@@ -27,9 +25,6 @@ static VkInstance vk;
 #include "fixed_allocator.h"
 #include "device.h"
 
-static List<VkLayerProperties> vk_layers;
-static List<VkPhysicalDevice> physical_devices;
-static List<const char*> vk_enabled_extensions;
 static Window window;
 static Swapchain swapchain;
 static VkShaderModule vert;
@@ -42,101 +37,6 @@ static VkCommandBuffer command_buffer;
 static VkSemaphore image_available_semaphore;
 static VkSemaphore render_finished_semaphore;
 static VkFence inflight_fence;
-
-void QueryValidationLayers() {
-	u32 layer_count;
-	vkEnumerateInstanceLayerProperties(&layer_count, null);
-
-	vk_layers.AssureCount(layer_count);
-	vkEnumerateInstanceLayerProperties(&layer_count, vk_layers.elements);
-
-	Print("Layers:\n");
-	for (auto layer : vk_layers)
-		Print("\t%\n", CString(layer.layerName));
-
-}
-
-static bool IsValidationLayerPresent(String str) {
-	for (auto& layer : vk_layers) {
-		if (CString(layer.layerName) != str)
-			continue;
-
-		return true;
-	}
-
-	return false;
-}
-
-static List<const char*> QueryGlfwRequiredExtensions() {
-	List<const char*> result;
-	u32 count = 0;
-	result.elements = glfwGetRequiredInstanceExtensions(&count);
-	result.count = count;
-	result.capacity = 0;
-	return result;
-}
-
-static void InitVulkan() {
-	Print("Initializing vulkan...\n");
-	List<const char*> glfw_required_extensions = QueryGlfwRequiredExtensions();
-
-	vk_enabled_extensions.Add(glfw_required_extensions);
-	vk_enabled_extensions.Add(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-#ifdef MACOS
-	vk_enabled_extensions.Add(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
-#endif
-
-
-	Print("Required Extensions:\n");
-	for (auto ext : vk_enabled_extensions)
-		Print("\t%\n", CString(ext));
-
-	Print("Glfw Required Extensions:\n");
-	for (auto ext : glfw_required_extensions)
-		Print("\t%\n", CString(ext));
-
-	VkApplicationInfo app_info = {
-		.sType              = VK_STRUCTURE_TYPE_APPLICATION_INFO,
-		.pApplicationName   = "Engine",
-		.applicationVersion = VK_MAKE_VERSION(1, 0, 0),
-		.pEngineName        = "xxx",
-		.engineVersion      = VK_MAKE_VERSION(1, 0, 0),
-		.apiVersion         = VK_API_VERSION_1_4,
-	};
-
-	QueryValidationLayers();
-
-	for (auto layer_name : vk_enabled_layers)
-		Assert(IsValidationLayerPresent(CString(layer_name)));
-
-	VkInstanceCreateInfo inst_info = {
-		.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-#ifdef MACOS
-		.flags = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR,
-#endif
-		.pApplicationInfo = &app_info,
-
-		.ppEnabledExtensionNames = vk_enabled_extensions.elements,
-		.enabledExtensionCount   = vk_enabled_extensions.count,
-
-		.ppEnabledLayerNames = vk_enabled_layers,
-		.enabledLayerCount   = vk_enabled_layer_count,
-	};
-
-	VkResult result = vkCreateInstance(&inst_info, null, &vk);
-	LogVar(ToString(result));
-	Assert(result == VK_SUCCESS);
-}
-
-static List<VkPhysicalDevice> QueryPhysicalDevices() {
-	List<VkPhysicalDevice> result;
-	u32 count = 0;
-	vkEnumeratePhysicalDevices(vk, &count, null);
-	result.AssureCount(count);
-	vkEnumeratePhysicalDevices(vk, &count, result.elements);
-	result.count = count;
-	return result;
-}
 
 static bool IsPhysicalDeviceGood(VkPhysicalDevice pdev) {
 	VkPhysicalDeviceProperties props;
@@ -168,9 +68,7 @@ static bool IsPhysicalDeviceGood(VkPhysicalDevice pdev) {
 static VkPhysicalDevice FindPhysicalDevice() {
 	Print("Finding physical device...\n");
 
-	physical_devices = QueryPhysicalDevices();
-
-	for (VkPhysicalDevice pdev : physical_devices)
+	for (VkPhysicalDevice pdev : vk_helper.physical_devices)
 		if (IsPhysicalDeviceGood(pdev))
 			return pdev;
 
@@ -595,7 +493,7 @@ int main(int argc, char** argv) {
 
 	window = CreateWindow();
 
-	InitVulkan();
+	vk_helper.Init();
 	window.InitSurface();
 
 	VkPhysicalDevice physical_device = FindPhysicalDevice();
@@ -642,7 +540,7 @@ int main(int argc, char** argv) {
 	swapchain.Destroy();
 	window.Destroy();
 	device.Destroy();
-	vkDestroyInstance(vk, null);
+	vkDestroyInstance(vk_helper.instance, null);
 	glfwTerminate();
 
 	Print("Goodbye!\n");

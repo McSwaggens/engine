@@ -1,13 +1,23 @@
 #ifndef VK_HELPER_H
 #define VK_HELPER_H
 
+#include <vulkan/vulkan.h>
+
 #include "string.h"
+#include "list.h"
 
-static const char* vk_enabled_layers[] = {
-	"VK_LAYER_KHRONOS_validation",
-};
+struct VkHelper {
+	VkInstance instance;
 
-static u32 vk_enabled_layer_count = sizeof(vk_enabled_layers) / sizeof(*vk_enabled_layers);
+	List<const char*>       enabled_layers;
+	List<VkLayerProperties> present_layers;
+
+	List<const char*> enabled_extensions;
+
+	List<VkPhysicalDevice> physical_devices;
+
+	void Init();
+} static vk_helper = { };
 
 static String ToString(VkResult result) {
 	switch (result) {
@@ -60,16 +70,6 @@ static String ToString(VkResult result) {
 		case VK_INCOMPATIBLE_SHADER_BINARY_EXT:                     return "VK_INCOMPATIBLE_SHADER_BINARY_EXT";
 		case VK_PIPELINE_BINARY_MISSING_KHR:                        return "VK_PIPELINE_BINARY_MISSING_KHR";
 		case VK_ERROR_NOT_ENOUGH_SPACE_KHR:                         return "VK_ERROR_NOT_ENOUGH_SPACE_KHR";
-		// case VK_ERROR_OUT_OF_POOL_MEMORY_KHR:                       return "VK_ERROR_OUT_OF_POOL_MEMORY_KHR";
-		// case VK_ERROR_INVALID_EXTERNAL_HANDLE_KHR:                  return "VK_ERROR_INVALID_EXTERNAL_HANDLE_KHR";
-		// case VK_ERROR_FRAGMENTATION_EXT:                            return "VK_ERROR_FRAGMENTATION_EXT";
-		// case VK_ERROR_NOT_PERMITTED_EXT:                            return "VK_ERROR_NOT_PERMITTED_EXT";
-		// case VK_ERROR_NOT_PERMITTED_KHR:                            return "VK_ERROR_NOT_PERMITTED_KHR";
-		// case VK_ERROR_INVALID_DEVICE_ADDRESS_EXT:                   return "VK_ERROR_INVALID_DEVICE_ADDRESS_EXT";
-		// case VK_ERROR_INVALID_OPAQUE_CAPTURE_ADDRESS_KHR:           return "VK_ERROR_INVALID_OPAQUE_CAPTURE_ADDRESS_KHR";
-		// case VK_PIPELINE_COMPILE_REQUIRED_EXT:                      return "VK_PIPELINE_COMPILE_REQUIRED_EXT";
-		// case VK_ERROR_PIPELINE_COMPILE_REQUIRED_EXT:                return "VK_ERROR_PIPELINE_COMPILE_REQUIRED_EXT";
-		// case VK_ERROR_INCOMPATIBLE_SHADER_BINARY_EXT:               return "VK_ERROR_INCOMPATIBLE_SHADER_BINARY_EXT";
 		default: return "UNKNOWN";
 	}
 }
