@@ -2,187 +2,170 @@
 #include "os.h"
 #include "general.h"
 
-struct GaPool {
-	byte* linked_list_head;
-	byte* stack_head;
-	byte* stack_tail;
+static const u64 GA_MIN_POW  = 4;
+static const u64 GA_MIN_SIZE = 1llu << GA_MIN_POW;
+static const u64 GA_LOWER_MASK =  (PAGE_SIZE-1) & -GA_MIN_SIZE;
+static const u64 GA_UPPER_MASK = -PAGE_SIZE;
 
-	bool IsEmpty() {
-		return linked_list_head == null && stack_head == stack_tail;
-	}
+struct GlobalAllocatorPool {
+	byte* stack_head = null;
+	byte* stack_tail = null;
+	byte* linked_list_head = null;
 
-	void PutStack(byte* p, u64 size) {
-		// Print("\tPutStack(p = %, size = %)", p, size);
-		Assert(IsEmpty());
-		stack_head = p;
-		stack_tail = p + size;
-	}
+	bool IsStackEmpty()      { return stack_head >= stack_tail; }
+	bool IsLinkedListEmpty() { return !linked_list_head; }
+	bool IsEmpty() { return IsLinkedListEmpty() && IsStackEmpty(); }
 
-	void PutLinked(byte* p) {
-		// Print("\tPutLinked(p = %)\n");
+	void InsertLinkedList(byte* p) {
 		*(byte**)p = linked_list_head;
 		linked_list_head = p;
 	}
 
-	bool HasStack() {
-		return stack_head != stack_tail;
+	void SetStack(byte* p, u64 size) {
+		Assert(stack_head == stack_tail);
+
+		stack_head = p;
+		stack_tail = p + size;
+	}
+
+	byte* TakeLinkedList() {
+		Assert(!IsLinkedListEmpty());
+
+		byte* result = linked_list_head;
+		linked_list_head = *(byte**)linked_list_head;
+
+		return result;
+	}
+
+	byte* TakeStack(u64 size) {
+		Assert(!IsStackEmpty());
+
+		byte* result = stack_head;
+		stack_head += size;
+
+		return result;
 	}
 };
 
-static GaPool pools[64];
-static u64 pool_map;
+struct GlobalAllocator {
+	u64 map = 0;
+	GlobalAllocatorPool pools[64] = { };
 
-static void GaFree(u64 index, void* p) {
-	// Print("\tGaFree(index = %, p = %)\n", index, p);
-	GaPool* pool = &pools[index];
+	void Init() {
+		map = GA_LOWER_MASK;
 
-	// @todo: Only do this in debug mode.
-	SetMemory(p, 0xCC, index);
+		u64   block_size = PopCount(map) * PAGE_SIZE;
+		byte* block = (byte*)AllocPages(block_size);
 
-	*(void**)p = pool->linked_list_head;
-	pool->linked_list_head = (byte*)p;
-}
+		byte* p = block;
+		for (u32 i = 0; i < PopCount(map); i++) {
+			pools[GA_MIN_POW + i].SetStack(p, PAGE_SIZE);
+			p += PAGE_SIZE;
+		}
 
-static byte* GaTake(u64 index) {
-	// Print("\tGaTake(index = %)\n", index);
-	GaPool* pool = &pools[index];
+		Assert(p == block + block_size);
+	}
 
-	if (pool->linked_list_head) {
-		byte* result = pool->linked_list_head;
-		pool->linked_list_head = *(byte**)&pool->linked_list_head;
+	u64 NormalizeSize(u64 size) {
+		return (size + (GA_MIN_SIZE-1)) & -GA_MIN_SIZE;
+	}
+
+	void InsertSingle(u64 bit, u64 pool_index, byte* block) {
+		GlobalAllocatorPool* pool = &pools[pool_index];
+
+		if (pool->IsStackEmpty()) pool->SetStack(block, bit);
+		else                      pool->InsertLinkedList(block);
+
+		map |= bit;
+	}
+
+	byte* Take(u64 pool_index) {
+		GlobalAllocatorPool* pool = &pools[pool_index];
+		u64 bit = 1llu << pool_index;
+
+		Assert(map & bit);
+		Assert(!pool->IsEmpty());
+
+		byte* result;
+		if (!pool->IsLinkedListEmpty()) result = pool->TakeLinkedList();
+		else                            result = pool->TakeStack(bit);
+
+		if (pool->IsEmpty())
+			map ^= bit;
+
+		Assert(result);
 		return result;
 	}
 
-	if (pool->stack_head != pool->stack_tail) {
-		byte* result = pool->stack_head;
-		pool->stack_head += (1llu << index);
-		return result;
-	}
+	void Fill(u64 bit, u64 index) {
+		Assert(pools[index].IsEmpty());
+		Assert(~map & bit);
 
-	return null;
-}
+		u64 upper_map = map & GA_UPPER_MASK & -bit;
 
+		if (!upper_map) {
+			u64 block_size = Max(bit << 4llu, PAGE_SIZE);
+			byte* block = (byte*)AllocPages(block_size);
+			Assert(block_size > bit * 2);
 
-static u64 GaNormalizeSize(u64 size) {
-	return RoundPow2((size + 15) & -16);
-}
+			pools[index].SetStack(block, block_size);
+			map |= bit;
 
-static void InitGlobalAllocator() {
-	ZeroMemory(pools, sizeof(pools));
-	pool_map = 0;
-}
+			return;
+		}
 
-static void GaSetStack(u32 index, byte* block, u64 block_size) {
-	// Print("\tGaSetStack(index = %, block = %, block_size = %)\n", index, block, block_size);
-	GaPool* pool = &pools[index];
+		// Spill.
+		u64 take_index = Ctz64(upper_map);
+		u64 block_size = 1llu << take_index;
+		byte* block = Take(take_index);
+		Assert(block_size > bit * 2);
 
-	Assert(pool->IsEmpty());
-	Assert( block_size >= (1llu << index));
-	Assert((block_size & -(1llu << index)) == block_size);
+		pools[index].SetStack(block, block_size);
+		map |= bit;
 
-	pool->PutStack(block, block_size);
-
-	pool_map |= 1llu<<index;
-}
-
-static void FillPool(u64 index) {
-	// Print("\tFillPool(index = %)\n", index);
-	GaPool* pool = &pools[index];
-	Assert(pool->IsEmpty());
-	u64 size = 1llu << index;
-	byte* p = (byte*)AllocPages(size);
-	GaSetStack(index, p, size);
-}
-
-static void GaInsert(u32 index, byte* block, u64 block_size) {
-	// Print("\tGaInsert(index = %, block = %, block_size = %)\n", index, block, block_size);
-	GaPool* pool = &pools[index];
-
-	Assert(pool->IsEmpty());
-	Assert( block_size >= (1llu << index));
-	Assert((block_size & -(1llu << index)) == block_size);
-
-	if (!pool->HasStack()) {
-		GaSetStack(index, block, block_size);
 		return;
 	}
 
-	for (u32 i = 0; i < block_size; i += (1llu << index))
-		pool->PutLinked(block + i);
-}
+	byte* Allocate(u64 size) {
+		u64 bit   = NormalizeSize(size);
+		u64 index = Ctz64(bit);
 
+		if (!(map & bit))
+			Fill(bit, index);
 
-static void GaSplat(byte* block, u64 mask) {
-	// Print("\tGaSplat(block = %, mask = %)\n", block, Bin(mask));
-	u64 m = mask;
-	for (u32 i = 0; i < PopCount(mask); i++) {
-		u64 pow = Ctz64(m);
-		u64 bit = 1llu << pow;
-		m -= bit;
-		GaSetStack(pow, block, (1llu << pow));
-		block += bit;
+		return Take(index);
 	}
 
-	pool_map |= mask;
-}
+	void Free(byte* p, u64 size) {
+		u64 bit   = NormalizeSize(size);
+		u64 index = Ctz64(bit);
 
-static void GaSpill(byte* block, u64 block_size, u64 mask) {
-	// Print("\tGaSpill(block = %, block_size = %, mask = %)\n", block, block_size, Bin(mask));
-	u64 bot_size = block_size - mask;
-
-	if (PopCount(mask) == 1)
-		return;
-
-	GaSetStack(Ctz64(mask), block, bot_size);
-	GaSplat(block + bot_size, RemoveRightBit64(mask));
-}
+		InsertSingle(bit, index, p);
+	}
+} static global_allocator;
 
 static void* AllocMemory(u64 size) {
 	// Print("AllocMemory(size = %)\n", size);
-	size = GaNormalizeSize(size);
-	u32 pow = Ctz64(size);
-
-	Assert(IsPow2(size));
-	if (pool_map & size)
-		return GaTake(pow);
-
-	u64 available_pools = pool_map & -pow;
-
-	if (!available_pools)
-		FillPool(Max(pow, 20u) + 4);
-
-	u64 from_pow = Ctz64(pool_map & -size & -4096);
-	// Print("  pow = %\n", pow);
-	// Print("  pool_map = %\n", Bin(pool_map));
-	// Print("  pool_map & -size & -4096 = %\n", Bin(pool_map & -size & -4096));
-	// Print("  from_pow = %\n", from_pow);
-	GaSpill(GaTake(from_pow), 1llu << from_pow, BitsBetween(from_pow-1, Max(pow, 12u)));
-
-	if (pow < 12)
-		GaSetStack(pow, GaTake(12), 1<<12);
-
-	return GaTake(pow);
+	return global_allocator.Allocate(size);
 }
 
 static void FreeMemory(void* p, u64 size) {
-	if (!p) return;
 	// Print("FreeMemory(p = %, size = %)\n", p, size);
-	size = GaNormalizeSize(size);
-	u32 index = Ctz64(size);
-	GaFree(index, p);
+	if (!p) return;
+	global_allocator.Free((byte*)p, size);
 }
 
 static void* ReAllocMemory(void* p, u64 old_size, u64 new_size) {
 	// Print("ReAllocMemory(p = %, old_size = %, new_size = %)\n", p, old_size, new_size);
 	u64 old_real_size = old_size;
 
-	old_size = GaNormalizeSize(old_size);
-	new_size = GaNormalizeSize(new_size);
+	old_size = global_allocator.NormalizeSize(old_size);
+	new_size = global_allocator.NormalizeSize(new_size);
 
 	if (old_size == new_size)
 		return p;
 
-	void* result = AllocMemory(new_size);
+	void* result = global_allocator.Allocate(new_size);
 
 	if (old_size)
 	{
@@ -196,13 +179,12 @@ static void* ReAllocMemory(void* p, u64 old_size, u64 new_size) {
 
 static void* CopyAllocMemory(void* p, u64 size) {
 	// Print("CopyAllocMemory(p = %, size = %)\n", p, size);
-	u64 real_size = size;
-
-	size = GaNormalizeSize(size);
-
-	void* result = AllocMemory(size);
-	CopyMemory(result, p, real_size);
+	void* result = global_allocator.Allocate(size);
+	CopyMemory(result, p, size);
 
 	return result;
 }
 
+static void InitGlobalAllocator() {
+	global_allocator.Init();
+}

@@ -4,10 +4,10 @@
 #include "general.h"
 #include "string.h"
 
-#ifdef MACOS
-	#define PAGE_SIZE (16 << 10)
+#if MACOS
+	#define PAGE_SIZE (16llu << 10)
 #else
-	#define PAGE_SIZE (4 << 10)
+	#define PAGE_SIZE (4llu << 10)
 #endif
 
 typedef s32 FileHandle;
