@@ -69,7 +69,7 @@ Queue* Device::CreateQueue(u32 family_index) {
 }
 
 VkSemaphore Device::CreateSemaphore() {
-	VkSemaphore result;
+	VkSemaphore result = VK_NULL_HANDLE;
 
 	VkSemaphoreCreateInfo semaphore_info = {
 		.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
@@ -79,6 +79,7 @@ VkSemaphore Device::CreateSemaphore() {
 	VkResult vk_result = vkCreateSemaphore(logical_device, &semaphore_info, null, &result);
 	Assert(vk_result == VK_SUCCESS);
 
+	standard_output_buffer.Flush();
  	return result;
 }
 
@@ -124,6 +125,20 @@ VkCommandBuffer Device::CreateCommandBuffer() {
 	Assert(vk_result == VK_SUCCESS);
 
 	return result;
+}
+
+void Device::CreateCommandBuffers(VkCommandBuffer* out_command_buffers, u32 count) {
+	Assert(count > 0);
+
+	VkCommandBufferAllocateInfo alloc_info = {
+		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+		.commandPool = command_pool,
+		.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+		.commandBufferCount = count,
+	};
+
+	VkResult vk_result = vkAllocateCommandBuffers(logical_device, &alloc_info, out_command_buffers);
+	Assert(vk_result == VK_SUCCESS);
 }
 
 void Device::WaitIdle() {

@@ -123,3 +123,6 @@ VkPhysicalDevice VkHelper::FindPhysicalDevice(Window* window) {
 	return VK_NULL_HANDLE;
 }
 
+void VkHelper::Destroy() {
+	vkDestroyInstance(instance, null);
+}

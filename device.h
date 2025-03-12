@@ -26,6 +26,7 @@ struct Device {
 	VkFence     CreateFence(bool signalled = false);
 
 	VkCommandBuffer CreateCommandBuffer();
+	void CreateCommandBuffers(VkCommandBuffer* out_command_buffers, u32 count);
 
 	void Init(VkPhysicalDevice pdev, QueueFamilyTable qft);
 	void InitCommandPool();

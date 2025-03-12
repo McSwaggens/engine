@@ -119,6 +119,7 @@ struct List {
 
 	void Free() {
 		FreeMemory(elements, sizeof(T) * capacity);
+		elements = null;
 		capacity = 0;
 		Reset();
 	}

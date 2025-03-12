@@ -33,12 +33,16 @@ static VkShaderModule frag;
 static VkRenderPass renderpass;
 static VkPipelineLayout pipeline_layout;
 static VkPipeline pipeline;
-static VkCommandBuffer command_buffer;
-static VkSemaphore image_available_semaphore;
-static VkSemaphore render_finished_semaphore;
-static VkFence inflight_fence;
+
+static const u32 INFLIGHT_FRAME_COUNT = 2;
+
+static List<VkCommandBuffer> command_buffers;
+static List<VkSemaphore>     image_available_semaphores;
+static List<VkSemaphore>     render_finished_semaphores;
+static List<VkFence>         inflight_fences;
 
 static u64 frame_counter = 0;
+static u64 inflight_frame_index = 0;
 static f64 time          = 0.0;
 static u64 time_us       = 0;
 static u64 init_time_us  = 0;
@@ -356,20 +360,20 @@ static void RecordCommandBuffer(VkCommandBuffer command_buffer, u32 image_index)
 }
 
 static void DrawFrame() {
-	vkWaitForFences(device.logical_device, 1, &inflight_fence, true, -1);
-	vkResetFences(device.logical_device,   1, &inflight_fence);
+	vkWaitForFences(device.logical_device, 1, &inflight_fences[inflight_frame_index], true, -1);
+	vkResetFences(device.logical_device,   1, &inflight_fences[inflight_frame_index]);
 
-	u32 image = swapchain.GetNextImageIndex(image_available_semaphore);
+	u32 image = swapchain.GetNextImageIndex(image_available_semaphores[inflight_frame_index]);
 
-	vkResetCommandBuffer(command_buffer, 0);
-	RecordCommandBuffer(command_buffer, image);
+	vkResetCommandBuffer(command_buffers[inflight_frame_index], 0);
+	RecordCommandBuffer(command_buffers[inflight_frame_index], image);
 
 	// Wait for an image before rendering colors.
-	VkSemaphore          wait_semaphores[] = { image_available_semaphore                     };
-	VkPipelineStageFlags wait_stages[]     = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+	VkSemaphore          wait_semaphores[] = { image_available_semaphores[inflight_frame_index] };
+	VkPipelineStageFlags wait_stages[]     = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT    };
 
 	// Semaphores to signal when we're done rendering the frame.
-	VkSemaphore signal_semaphores[] = { render_finished_semaphore };
+	VkSemaphore signal_semaphores[] = { render_finished_semaphores[inflight_frame_index] };
 
 	VkSubmitInfo submit_info = {
 		.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
@@ -377,14 +381,14 @@ static void DrawFrame() {
 		.pWaitSemaphores = wait_semaphores,
 		.pWaitDstStageMask = wait_stages,
 
-		.pCommandBuffers = &command_buffer,
+		.pCommandBuffers = &command_buffers[inflight_frame_index],
 		.commandBufferCount = 1,
 
 		.signalSemaphoreCount = 1,
 		.pSignalSemaphores = signal_semaphores,
 	};
 
-	VkResult vk_result = vkQueueSubmit(device.general_queue->vk, 1, &submit_info, inflight_fence);
+	VkResult vk_result = vkQueueSubmit(device.general_queue->vk, 1, &submit_info, inflight_fences[inflight_frame_index]);
 	Assert(vk_result == VK_SUCCESS);
 
 	VkPresentInfoKHR present_info = {
@@ -402,6 +406,8 @@ static void DrawFrame() {
 
 int main(int argc, char** argv) {
 	Print("Initializing...\n");
+
+	InitGlobalAllocator();
 
 	InitTime();
 	InitWindowSystem();
@@ -422,11 +428,18 @@ int main(int argc, char** argv) {
 	CreatePipeline();
 
 	swapchain.InitFrameBuffers(renderpass);
-	command_buffer = device.CreateCommandBuffer();
 
-	image_available_semaphore = device.CreateSemaphore();
-	render_finished_semaphore = device.CreateSemaphore();
-	inflight_fence = device.CreateFence(true);
+	command_buffers.AssureCount(INFLIGHT_FRAME_COUNT);
+	image_available_semaphores.AssureCount(INFLIGHT_FRAME_COUNT);
+	render_finished_semaphores.AssureCount(INFLIGHT_FRAME_COUNT);
+	inflight_fences.AssureCount(INFLIGHT_FRAME_COUNT);
+
+	device.CreateCommandBuffers(command_buffers.elements, INFLIGHT_FRAME_COUNT);
+	for (u32 i = 0; i < INFLIGHT_FRAME_COUNT; i++) {
+		image_available_semaphores[i] = device.CreateSemaphore();
+		render_finished_semaphores[i] = device.CreateSemaphore();
+		inflight_fences[i] = device.CreateFence(true);
+	}
 
 	Print("Running...\n");
 
@@ -439,6 +452,8 @@ int main(int argc, char** argv) {
 	while (!window.ShouldClose()) {
 		UpdateTime();
 		window.Update();
+
+		inflight_frame_index = frame_counter % INFLIGHT_FRAME_COUNT;
 
 		if (time - last_second_time >= 1.0) {
 			last_second_time = time;
@@ -459,18 +474,22 @@ int main(int argc, char** argv) {
 	device.WaitIdle();
 
 	Print("Terminating...\n");
-	vkDestroySemaphore(device.logical_device, image_available_semaphore, null);
-	vkDestroySemaphore(device.logical_device, render_finished_semaphore, null);
-	vkDestroyFence(device.logical_device, inflight_fence, null);
+	for (VkSemaphore semaphore : image_available_semaphores) vkDestroySemaphore(device.logical_device, semaphore, null);
+	for (VkSemaphore semaphore : render_finished_semaphores) vkDestroySemaphore(device.logical_device, semaphore, null);
+
+	for (VkFence fence : inflight_fences) vkDestroyFence(device.logical_device, fence, null);
+
 	vkDestroyRenderPass(device.logical_device, renderpass, null);
 	vkDestroyPipelineLayout(device.logical_device, pipeline_layout, null);
 	vkDestroyPipeline(device.logical_device, pipeline, null);
+
 	vkDestroyShaderModule(device.logical_device, vert, null);
 	vkDestroyShaderModule(device.logical_device, frag, null);
+
 	swapchain.Destroy();
 	window.Destroy();
 	device.Destroy();
-	vkDestroyInstance(vk_helper.instance, null);
+	vk_helper.Destroy();
 	glfwTerminate();
 
 	Print("Goodbye!\n");
