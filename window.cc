@@ -12,6 +12,7 @@ static Window CreateWindow() {
 	Window window = { };
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 	window.glfw_window = glfwCreateWindow(640, 480, "Engine", null, null);
+	window.UpdateSize();
 	return window;
 }
 
@@ -21,8 +22,19 @@ void Window::Destroy() {
 	glfw_window = null;
 }
 
+void Window::UpdateSize() {
+	s32 w, h;
+	glfwGetWindowSize(glfw_window, &w, &h);
+
+	has_size_changed = width != w || height != h;
+
+	width  = w;
+	height = h;
+}
+
 void Window::Update() {
 	glfwPollEvents();
+	UpdateSize();
 }
 
 bool Window::InitSurface() {

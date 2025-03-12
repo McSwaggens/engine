@@ -8,10 +8,17 @@ struct Window {
 	GLFWwindow* glfw_window;
 	VkSurfaceKHR surface;
 
+	u32 width  = 0;
+	u32 height = 0;
+
+	bool has_size_changed = false;
+
 	void Destroy();
 	void Update();
 	void SwapBuffers();
 	bool InitSurface();
+
+	void UpdateSize();
 
 	Vector2 GetPosition();
 	Vector2 GetSize();

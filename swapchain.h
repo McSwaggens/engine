@@ -17,14 +17,17 @@ struct Swapchain {
 
 	List<VkFramebuffer> framebuffers;
 
+	void Init(Window* window);
 	void InitImages();
 	void InitViews();
 	void InitFrameBuffers(VkRenderPass renderpass);
+
+	void Reload(Window* window, VkRenderPass renderpass);
+
 	u32 GetNextImageIndex(VkSemaphore image_available);
+
 	void Destroy();
 };
-
-static Swapchain CreateSwapchain(Window* window);
 
 struct SwapchainSupportInfo {
 	VkSurfaceKHR surface;

@@ -419,7 +419,7 @@ int main(int argc, char** argv) {
 	QueueFamilyTable qft = QueryQueueFamilyTable(physical_device, &window);
 
 	device.Init(physical_device, qft);
-	swapchain = CreateSwapchain(&window);
+	swapchain.Init(&window);
 
 	vert = LoadShader("vert.spv");
 	frag = LoadShader("frag.spv");
@@ -452,6 +452,9 @@ int main(int argc, char** argv) {
 	while (!window.ShouldClose()) {
 		UpdateTime();
 		window.Update();
+
+		if (window.has_size_changed)
+			swapchain.Reload(&window, renderpass);
 
 		inflight_frame_index = frame_counter % INFLIGHT_FRAME_COUNT;
 

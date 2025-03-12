@@ -5,11 +5,11 @@
 
 #include "device.h"
 
-static Swapchain CreateSwapchain(Window* window) {
+void Swapchain::Init(Window* window) {
 	SwapchainSupportInfo swapchain_info = QuerySwapchainSupportInfo(device.physical_device, window->surface);
 	VkPresentModeKHR present_mode = swapchain_info.ChoosePresentMode();
-	VkSurfaceFormatKHR surface_format = swapchain_info.ChooseFormat();
-	VkExtent2D extent = swapchain_info.GetExtent(window);
+	surface_format = swapchain_info.ChooseFormat();
+	extent = swapchain_info.GetExtent(window);
 	u32 image_count = swapchain_info.GetImageCount();
 
 	VkSwapchainCreateInfoKHR swapchain_create_info = {
@@ -34,21 +34,12 @@ static Swapchain CreateSwapchain(Window* window) {
 		.oldSwapchain = null,
 	};
 
-	VkSwapchainKHR handle;
 	VkResult result = vkCreateSwapchainKHR(device.logical_device, &swapchain_create_info, null, &handle);
 	Assert(result == VK_SUCCESS);
 
-	Swapchain swapchain = {
-		.handle = handle,
-		.surface_format = surface_format,
-		.extent = extent,
-	};
-
-	swapchain.InitImages();
-	swapchain.InitViews();
+	InitImages();
+	InitViews();
 	swapchain_info.Free();
-
-	return swapchain;
 }
 
 void Swapchain::InitImages() {
@@ -120,6 +111,13 @@ void Swapchain::InitFrameBuffers(VkRenderPass renderpass) {
 	}
 }
 
+void Swapchain::Reload(Window* window, VkRenderPass renderpass) {
+	device.WaitIdle();
+	Destroy();
+	Init(window);
+	InitFrameBuffers(renderpass);
+}
+
 u32 Swapchain::GetNextImageIndex(VkSemaphore image_available) {
 	u32 index;
 	vkAcquireNextImageKHR(device.logical_device, handle, -1, image_available, VK_NULL_HANDLE, &index);
@@ -132,6 +130,7 @@ void Swapchain::Destroy() {
 
 	for (VkFramebuffer framebuffer : framebuffers)
 		vkDestroyFramebuffer(device.logical_device, framebuffer, null);
+	framebuffers.Reset();
 
 	for (VkImageView view : views)
 		vkDestroyImageView(device.logical_device, view, null);
