@@ -11,7 +11,7 @@ static bool InitWindowSystem() {
 static Window CreateWindow() {
 	Window window = { };
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-	window.glfw_window = glfwCreateWindow(640, 480, "Engine", null, null);
+	window.glfw_window = glfwCreateWindow(1920, 1080, "Engine", null, null);
 	window.UpdateSize();
 	return window;
 }
