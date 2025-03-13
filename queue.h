@@ -2,6 +2,7 @@
 #define QUEUE_H
 
 #include "general.h"
+#include "window.h"
 #include <vulkan/vulkan.h>
 
 struct Queue {

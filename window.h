@@ -4,6 +4,9 @@
 #include "general.h"
 #include "vector.h"
 
+#include <vulkan/vulkan.h>
+#include <GLFW/glfw3.h>
+
 struct Window {
 	GLFWwindow* glfw_window;
 	VkSurfaceKHR surface;

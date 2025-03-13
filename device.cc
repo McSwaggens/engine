@@ -9,6 +9,7 @@ void Device::Init(VkPhysicalDevice pdev, QueueFamilyTable qft) {
 	queue_family_table = qft;
 
 	vkGetPhysicalDeviceProperties(physical_device, &physical_properties);
+	vkGetPhysicalDeviceMemoryProperties(physical_device, &memory_properties);
 	name = CString(physical_properties.deviceName);
 
 	Print("Using graphics card: %\n", name);
@@ -139,6 +140,38 @@ void Device::CreateCommandBuffers(VkCommandBuffer* out_command_buffers, u32 coun
 
 	VkResult vk_result = vkAllocateCommandBuffers(logical_device, &alloc_info, out_command_buffers);
 	Assert(vk_result == VK_SUCCESS);
+}
+
+u32 Device::FindMemoryType(u32 filter, VkMemoryPropertyFlags properties) {
+	for (u32 i = 0; i < memory_properties.memoryTypeCount; i++) {
+		VkMemoryType type = memory_properties.memoryTypes[i];
+
+		if (!(filter & (1 << i)))
+			continue;
+
+		if ((type.propertyFlags & properties) != properties)
+			continue;
+
+		return i;
+	}
+
+	Assert(false);
+	return -1;
+}
+
+VkDeviceMemory Device::AllocateMemory(u64 size, u32 type_index) {
+	VkDeviceMemory device_memory;
+
+	VkMemoryAllocateInfo alloc_info = {
+		.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+		.allocationSize = size,
+		.memoryTypeIndex = type_index,
+	};
+
+	VkResult vk_result = vkAllocateMemory(logical_device, &alloc_info, null, &device_memory);
+	Assert(vk_result == VK_SUCCESS);
+
+	return device_memory;
 }
 
 void Device::WaitIdle() {

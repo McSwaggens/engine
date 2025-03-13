@@ -4,6 +4,7 @@
 #include <GLFW/glfw3.h>
 
 #include "math.h"
+#include "device.h"
 #include "window.h"
 #include "os.h"
 
@@ -33,6 +34,8 @@ static VkShaderModule frag;
 static VkRenderPass renderpass;
 static VkPipelineLayout pipeline_layout;
 static VkPipeline pipeline;
+static VkBuffer vertex_buffer;
+static VkDeviceMemory vertex_buffer_memory;
 
 static const u32 INFLIGHT_FRAME_COUNT = 2;
 
@@ -40,6 +43,37 @@ static List<VkCommandBuffer> command_buffers;
 static List<VkSemaphore>     image_available_semaphores;
 static List<VkSemaphore>     render_finished_semaphores;
 static List<VkFence>         inflight_fences;
+
+struct Vertex {
+	Vector2 position;
+	Vector3 color;
+};
+
+static VkVertexInputBindingDescription CreateVertexBindDesc() {
+	VkVertexInputBindingDescription result = {
+		.binding   = 0,
+		.stride    = sizeof(Vertex),
+		.inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+	};
+
+	return result;
+}
+
+static void GenerateAttributeDescs(VkVertexInputAttributeDescription attributes[2]) {
+	attributes[0] = {
+		.binding = 0,
+		.location = 0,
+		.format = VK_FORMAT_R32G32_SFLOAT,
+		.offset = offsetof(Vertex, position),
+	};
+
+	attributes[1] = {
+		.binding = 0,
+		.location = 1,
+		.format = VK_FORMAT_R32G32B32_SFLOAT,
+		.offset = offsetof(Vertex, color),
+	};
+}
 
 static u64 frame_counter = 0;
 static u64 inflight_frame_index = 0;
@@ -77,6 +111,37 @@ static VkShaderModule LoadShader(String path) {
 	code.Free();
 
 	return module;
+}
+
+static void InitVertexBuffer() {
+	Vertex vertices[3] = {
+		{ .position = {  0,   -0.5 }, .color = { 1, 0, 0 } },
+		{ .position = {  0.5,  0.5 }, .color = { 0, 1, 0 } },
+		{ .position = { -0.5,  0.5 }, .color = { 0, 0, 1 } }
+	};
+
+	VkBufferCreateInfo buffer_info = {
+		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+		.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+		.size = sizeof(vertices),
+		// .pQueueFamilyIndices // IGNORED BECAUSE EXCLUSIVE
+	};
+	Assert(sizeof(vertices) == sizeof(Vertex)*3);
+	VkResult vk_result = vkCreateBuffer(device.logical_device, &buffer_info, null, &vertex_buffer);
+	Assert(vk_result == VK_SUCCESS);
+
+	VkMemoryRequirements memreq;
+	vkGetBufferMemoryRequirements(device.logical_device, vertex_buffer, &memreq);
+
+	u32 mem_type_index = device.FindMemoryType(memreq.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	vertex_buffer_memory = device.AllocateMemory(memreq.size, mem_type_index);
+	vkBindBufferMemory(device.logical_device, vertex_buffer, vertex_buffer_memory, 0);
+
+	void* mem;
+	vkMapMemory(device.logical_device, vertex_buffer_memory, 0, buffer_info.size, 0, &mem);
+	CopyMemory(mem, vertices, buffer_info.size);
+	vkUnmapMemory(device.logical_device, vertex_buffer_memory);
 }
 
 static void CreateRenderPass() {
@@ -170,15 +235,19 @@ static void CreatePipeline() {
 		.dynamicStateCount = sizeof(dynamic_states) / sizeof(*dynamic_states),
 	};
 
+	VkVertexInputBindingDescription bind = CreateVertexBindDesc();
+	VkVertexInputAttributeDescription vertex_attributes[2];
+	GenerateAttributeDescs(vertex_attributes);
+
 	// Vertex Input
 	VkPipelineVertexInputStateCreateInfo vertex_input_info = {
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
 
-		.pVertexBindingDescriptions    = null,
-		.vertexBindingDescriptionCount = 0,
+		.pVertexBindingDescriptions    = &bind,
+		.vertexBindingDescriptionCount = 1,
 
-		.pVertexAttributeDescriptions    = null,
-		.vertexAttributeDescriptionCount = 0,
+		.pVertexAttributeDescriptions    = vertex_attributes,
+		.vertexAttributeDescriptionCount = 2,
 	};
 
 	// Input Assembly
@@ -348,10 +417,13 @@ static void RecordCommandBuffer(VkCommandBuffer command_buffer, u32 image_index)
 		.extent = swapchain.extent,
 	};
 
+	VkDeviceSize offsets[1] = { 0 };
+
 	vkCmdBeginRenderPass(command_buffer, &renderpass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 	vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 	vkCmdSetViewport(command_buffer, 0, 1, &viewport);
 	vkCmdSetScissor(command_buffer,  0, 1, &scissor);
+	vkCmdBindVertexBuffers(command_buffer, 0, 1, &vertex_buffer, offsets);
 	vkCmdDraw(command_buffer, 3, 1, 0, 0);
 	vkCmdEndRenderPass(command_buffer);
 
@@ -424,6 +496,8 @@ int main(int argc, char** argv) {
 	vert = LoadShader("vert.spv");
 	frag = LoadShader("frag.spv");
 
+	InitVertexBuffer();
+
 	CreateRenderPass();
 	CreatePipeline();
 
@@ -481,6 +555,9 @@ int main(int argc, char** argv) {
 	for (VkSemaphore semaphore : render_finished_semaphores) vkDestroySemaphore(device.logical_device, semaphore, null);
 
 	for (VkFence fence : inflight_fences) vkDestroyFence(device.logical_device, fence, null);
+
+	vkDestroyBuffer(device.logical_device, vertex_buffer, null);
+	vkFreeMemory(device.logical_device, vertex_buffer_memory, null);
 
 	vkDestroyRenderPass(device.logical_device, renderpass, null);
 	vkDestroyPipelineLayout(device.logical_device, pipeline_layout, null);
