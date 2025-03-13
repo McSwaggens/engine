@@ -114,10 +114,11 @@ static VkShaderModule LoadShader(String path) {
 }
 
 static void InitVertexBuffer() {
-	Vertex vertices[3] = {
-		{ .position = {  0,   -0.5 }, .color = { 1, 0, 0 } },
-		{ .position = {  0.5,  0.5 }, .color = { 0, 1, 0 } },
-		{ .position = { -0.5,  0.5 }, .color = { 0, 0, 1 } }
+	Vertex vertices[4] = {
+		{ .position = {  1, -1 }, .color = { 1, 0, 0 } },
+		{ .position = {  1,  1 }, .color = { 0, 1, 0 } },
+		{ .position = { -1,  1 }, .color = { 0, 0, 1 } },
+		{ .position = { -1, -1 }, .color = { 1, 1, 0 } }
 	};
 
 	VkBufferCreateInfo buffer_info = {
@@ -125,9 +126,7 @@ static void InitVertexBuffer() {
 		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
 		.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
 		.size = sizeof(vertices),
-		// .pQueueFamilyIndices // IGNORED BECAUSE EXCLUSIVE
 	};
-	Assert(sizeof(vertices) == sizeof(Vertex)*3);
 	VkResult vk_result = vkCreateBuffer(device.logical_device, &buffer_info, null, &vertex_buffer);
 	Assert(vk_result == VK_SUCCESS);
 
@@ -253,7 +252,7 @@ static void CreatePipeline() {
 	// Input Assembly
 	VkPipelineInputAssemblyStateCreateInfo input_assembly_state_info = {
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-		.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+		.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN,
 		.primitiveRestartEnable = false,
 	};
 
@@ -424,7 +423,7 @@ static void RecordCommandBuffer(VkCommandBuffer command_buffer, u32 image_index)
 	vkCmdSetViewport(command_buffer, 0, 1, &viewport);
 	vkCmdSetScissor(command_buffer,  0, 1, &scissor);
 	vkCmdBindVertexBuffers(command_buffer, 0, 1, &vertex_buffer, offsets);
-	vkCmdDraw(command_buffer, 3, 1, 0, 0);
+	vkCmdDraw(command_buffer, 4, 1, 0, 0);
 	vkCmdEndRenderPass(command_buffer);
 
 	vk_result = vkEndCommandBuffer(command_buffer);
