@@ -1,3 +1,13 @@
+OS_NAME := $(shell uname)
+
+ifeq ($(OS_NAME), Darwin)
+	IS_MACOS=1
+endif
+
+ifeq ($(OS_NAME), Linux)
+	IS_LINUX=1
+endif
+
 program_xxx: *.cc *.h shaders
 	clang \
 		main.cc \
@@ -5,7 +15,8 @@ program_xxx: *.cc *.h shaders
 		-lglfw -lvulkan -lm \
 		-std=c++20 \
 		-Wno-writable-strings -Wno-reorder-init-list -Wno-vla-cxx-extension \
-		-DMACOS=0 \
+		-DMACOS=$(IS_MACOS) \
+		-DLINUX=$(IS_LINUX) \
 		-o program
 
 shaders: *.glsl
