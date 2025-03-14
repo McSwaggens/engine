@@ -1,5 +1,8 @@
 OS_NAME := $(shell uname)
 
+IS_MACOS:=0
+IS_LINUX:=0
+
 ifeq ($(OS_NAME), Darwin)
 	IS_MACOS=1
 endif
