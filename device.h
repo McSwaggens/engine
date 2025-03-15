@@ -8,6 +8,14 @@
 
 #include <vulkan/vulkan.h>
 
+struct GpuBuffer {
+	u64 size;
+	VkBuffer buffer;
+	VkDeviceMemory memory;
+
+	void Destroy();
+};
+
 struct Device {
 	VkPhysicalDevice physical_device;
 	VkDevice         logical_device;
@@ -39,6 +47,8 @@ struct Device {
 	u32 FindMemoryType(u32 filter, VkMemoryPropertyFlags properties);
 	VkDeviceMemory AllocateMemory(u64 size, u32 type_index);
 	// VkDeviceMemory AllocateMemory(u64 size, VkMemoryRequirements memory_requirements);
+
+	GpuBuffer CreateBuffer(u64 size,  VkBufferUsageFlags usage, VkMemoryPropertyFlags properties);
 
 	void WaitIdle();
 };

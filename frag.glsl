@@ -4,6 +4,8 @@ layout(location = 0) in  vec3 vertex_color;
 layout(location = 0) out vec4 color;
 
 void main() {
+	color = vec4(vertex_color, 1);
+	return;
 	vec2 c = (gl_FragCoord.xy / vec2(1920, 1080) - 0.5) * 2 * 1.5;
 	vec2 z = vec2(0);
 	for (int i = 0; i < 1000; i++) {

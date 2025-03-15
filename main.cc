@@ -34,8 +34,7 @@ static VkShaderModule frag;
 static VkRenderPass renderpass;
 static VkPipelineLayout pipeline_layout;
 static VkPipeline pipeline;
-static VkBuffer vertex_buffer;
-static VkDeviceMemory vertex_buffer_memory;
+static GpuBuffer vertex_buffer;
 
 static const u32 INFLIGHT_FRAME_COUNT = 2;
 
@@ -114,33 +113,20 @@ static VkShaderModule LoadShader(String path) {
 }
 
 static void InitVertexBuffer() {
-	Vertex vertices[4] = {
+	Vertex vertices[5] = {
 		{ .position = {  1, -1 }, .color = { 1, 0, 0 } },
 		{ .position = {  1,  1 }, .color = { 0, 1, 0 } },
 		{ .position = { -1,  1 }, .color = { 0, 0, 1 } },
-		{ .position = { -1, -1 }, .color = { 1, 1, 0 } }
+		{ .position = { -1, -1 }, .color = { 1, 1, 0 } },
+		{ .position = {  1, -1 }, .color = { 1, 0, 1 } },
 	};
 
-	VkBufferCreateInfo buffer_info = {
-		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-		.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-		.size = sizeof(vertices),
-	};
-	VkResult vk_result = vkCreateBuffer(device.logical_device, &buffer_info, null, &vertex_buffer);
-	Assert(vk_result == VK_SUCCESS);
-
-	VkMemoryRequirements memreq;
-	vkGetBufferMemoryRequirements(device.logical_device, vertex_buffer, &memreq);
-
-	u32 mem_type_index = device.FindMemoryType(memreq.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-	vertex_buffer_memory = device.AllocateMemory(memreq.size, mem_type_index);
-	vkBindBufferMemory(device.logical_device, vertex_buffer, vertex_buffer_memory, 0);
+	vertex_buffer = device.CreateBuffer(sizeof(vertices), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
 	void* mem;
-	vkMapMemory(device.logical_device, vertex_buffer_memory, 0, buffer_info.size, 0, &mem);
-	CopyMemory(mem, vertices, buffer_info.size);
-	vkUnmapMemory(device.logical_device, vertex_buffer_memory);
+	vkMapMemory(device.logical_device, vertex_buffer.memory, 0, vertex_buffer.size, 0, &mem);
+	CopyMemory(mem, vertices, vertex_buffer.size);
+	vkUnmapMemory(device.logical_device, vertex_buffer.memory);
 }
 
 static void CreateRenderPass() {
@@ -252,7 +238,7 @@ static void CreatePipeline() {
 	// Input Assembly
 	VkPipelineInputAssemblyStateCreateInfo input_assembly_state_info = {
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-		.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN,
+		.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP,
 		.primitiveRestartEnable = false,
 	};
 
@@ -422,8 +408,8 @@ static void RecordCommandBuffer(VkCommandBuffer command_buffer, u32 image_index)
 	vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 	vkCmdSetViewport(command_buffer, 0, 1, &viewport);
 	vkCmdSetScissor(command_buffer,  0, 1, &scissor);
-	vkCmdBindVertexBuffers(command_buffer, 0, 1, &vertex_buffer, offsets);
-	vkCmdDraw(command_buffer, 4, 1, 0, 0);
+	vkCmdBindVertexBuffers(command_buffer, 0, 1, &vertex_buffer.buffer, offsets);
+	vkCmdDraw(command_buffer, 5, 1, 0, 0);
 	vkCmdEndRenderPass(command_buffer);
 
 	vk_result = vkEndCommandBuffer(command_buffer);
@@ -555,8 +541,7 @@ int main(int argc, char** argv) {
 
 	for (VkFence fence : inflight_fences) vkDestroyFence(device.logical_device, fence, null);
 
-	vkDestroyBuffer(device.logical_device, vertex_buffer, null);
-	vkFreeMemory(device.logical_device, vertex_buffer_memory, null);
+	vertex_buffer.Destroy();
 
 	vkDestroyRenderPass(device.logical_device, renderpass, null);
 	vkDestroyPipelineLayout(device.logical_device, pipeline_layout, null);
