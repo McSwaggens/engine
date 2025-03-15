@@ -76,7 +76,7 @@ static void GenerateAttributeDescs(VkVertexInputAttributeDescription attributes[
 
 static u64 frame_counter = 0;
 static u64 inflight_frame_index = 0;
-static f64 time          = 0.0;
+static f64 current_time          = 0.0;
 static u64 time_us       = 0;
 static u64 init_time_us  = 0;
 static u64 fps = 0;
@@ -88,7 +88,7 @@ static void InitTime() {
 
 static void UpdateTime() {
 	time_us = GetTimeMicroseconds();
-	time = (time_us - init_time_us) / 1'000'000.0;
+	current_time = (time_us - init_time_us) / 1'000'000.0;
 }
 
 static VkShaderModule LoadShader(String path) {
@@ -504,8 +504,8 @@ int main(int argc, char** argv) {
 
 	UpdateTime();
 
-	f64 last_frame_time = time;
-	f64 last_second_time = time;
+	f64 last_frame_time = current_time;
+	f64 last_second_time = current_time;
 	u64 last_second_frame_counter = 0;
 
 	while (!window.ShouldClose()) {
@@ -517,8 +517,8 @@ int main(int argc, char** argv) {
 
 		inflight_frame_index = frame_counter % INFLIGHT_FRAME_COUNT;
 
-		if (time - last_second_time >= 1.0) {
-			last_second_time = time;
+		if (current_time - last_second_time >= 1.0) {
+			last_second_time = current_time;
 
 			fps = frame_counter - last_second_frame_counter;
 			last_second_frame_counter = frame_counter;
@@ -529,7 +529,7 @@ int main(int argc, char** argv) {
 		DrawFrame();
 
 		frame_counter++;
-		last_frame_time = time;
+		last_frame_time = current_time;
 		standard_output_buffer.Flush();
 	}
 
