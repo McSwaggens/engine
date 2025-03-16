@@ -18,6 +18,7 @@
 #include "device.cc"
 #include "queue.cc"
 #include "vk_helper.cc"
+#include "gpu_buffer.cc"
 
 #include "vk_helper.h"
 #include "vector.h"
@@ -26,6 +27,7 @@
 #include "swapchain.h"
 #include "fixed_allocator.h"
 #include "device.h"
+#include "command_buffer.h"
 
 static Window window;
 static Swapchain swapchain;
@@ -34,6 +36,7 @@ static VkShaderModule frag;
 static VkRenderPass renderpass;
 static VkPipelineLayout pipeline_layout;
 static VkPipeline pipeline;
+static GpuBuffer staging_buffer;
 static GpuBuffer vertex_buffer;
 
 static const u32 INFLIGHT_FRAME_COUNT = 2;
@@ -121,12 +124,15 @@ static void InitVertexBuffer() {
 		{ .position = {  1, -1 }, .color = { 1, 0, 1 } },
 	};
 
-	vertex_buffer = device.CreateBuffer(sizeof(vertices), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	staging_buffer = CreateBuffer(sizeof(vertices), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
 	void* mem;
-	vkMapMemory(device.logical_device, vertex_buffer.memory, 0, vertex_buffer.size, 0, &mem);
-	CopyMemory(mem, vertices, vertex_buffer.size);
-	vkUnmapMemory(device.logical_device, vertex_buffer.memory);
+	vkMapMemory(device.logical_device, staging_buffer.memory, 0, staging_buffer.size, 0, &mem);
+	CopyMemory(mem, vertices, staging_buffer.size);
+	vkUnmapMemory(device.logical_device, staging_buffer.memory);
+
+	vertex_buffer = CreateBuffer(sizeof(vertices), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	CopyBuffer(vertex_buffer, staging_buffer);
 }
 
 static void CreateRenderPass() {
@@ -542,6 +548,7 @@ int main(int argc, char** argv) {
 	for (VkFence fence : inflight_fences) vkDestroyFence(device.logical_device, fence, null);
 
 	vertex_buffer.Destroy();
+	staging_buffer.Destroy();
 
 	vkDestroyRenderPass(device.logical_device, renderpass, null);
 	vkDestroyPipelineLayout(device.logical_device, pipeline_layout, null);

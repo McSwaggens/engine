@@ -4,13 +4,6 @@
 #include <vulkan/vulkan.h>
 #include "vk_helper.h"
 
-void GpuBuffer::Destroy() {
-	vkDestroyBuffer(device.logical_device, buffer, null);
-	vkFreeMemory(device.logical_device, memory, null);
-
-	SetMemory(this, 0xCC, sizeof(*this));
-}
-
 void Device::Init(VkPhysicalDevice pdev, QueueFamilyTable qft) {
 	physical_device = pdev;
 	queue_family_table = qft;
@@ -119,18 +112,13 @@ void Device::InitCommandPool() {
 	Assert(vk_result == VK_SUCCESS);
 }
 
-VkCommandBuffer Device::CreateCommandBuffer() {
-	VkCommandBuffer result;
+CommandBuffer Device::CreateCommandBuffer() {
+	VkCommandBuffer cmdbuf;
+	CreateCommandBuffers(&cmdbuf, 1);
 
-	VkCommandBufferAllocateInfo alloc_info = {
-		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-		.commandPool = command_pool,
-		.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-		.commandBufferCount = 1,
+	CommandBuffer result = {
+		.handle = cmdbuf,
 	};
-
-	VkResult vk_result = vkAllocateCommandBuffers(logical_device, &alloc_info, &result);
-	Assert(vk_result == VK_SUCCESS);
 
 	return result;
 }
@@ -179,31 +167,6 @@ VkDeviceMemory Device::AllocateMemory(u64 size, u32 type_index) {
 	Assert(vk_result == VK_SUCCESS);
 
 	return device_memory;
-}
-
-GpuBuffer Device::CreateBuffer(u64 size,  VkBufferUsageFlags usage, VkMemoryPropertyFlags properties) {
-	GpuBuffer result = {
-		.size = size,
-	};
-
-	VkBufferCreateInfo buffer_info = {
-		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-		.usage = usage,
-		.size = size,
-	};
-
-	VkResult vk_result = vkCreateBuffer(device.logical_device, &buffer_info, null, &result.buffer);
-	Assert(vk_result == VK_SUCCESS);
-
-	VkMemoryRequirements memreq;
-	vkGetBufferMemoryRequirements(device.logical_device, result.buffer, &memreq);
-
-	result.memory = device.AllocateMemory(memreq.size, device.FindMemoryType(memreq.memoryTypeBits, properties));
-
-	vkBindBufferMemory(device.logical_device, result.buffer, result.memory, 0);
-
-	return result;
 }
 
 void Device::WaitIdle() {

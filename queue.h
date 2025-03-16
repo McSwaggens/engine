@@ -3,12 +3,33 @@
 
 #include "general.h"
 #include "window.h"
+#include "command_buffer.h"
+
 #include <vulkan/vulkan.h>
 
 struct Queue {
 	VkQueue vk;
 	u32 index;
 	u32 family;
+
+	void Wait() {
+		vkQueueWaitIdle(vk);
+	}
+
+	void ExecuteAsync(CommandBuffer cmdbuf, VkFence fence = VK_NULL_HANDLE) {
+		VkSubmitInfo submit_info = {
+			.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+			.commandBufferCount = 1,
+			.pCommandBuffers = &cmdbuf.handle,
+		};
+
+		vkQueueSubmit(vk, 1, &submit_info, fence);
+	}
+
+	void Execute(CommandBuffer cmdbuf) {
+		ExecuteAsync(cmdbuf, VK_NULL_HANDLE);
+		Wait();
+	}
 };
 
 struct QueueFamilyTable {
