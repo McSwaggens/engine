@@ -552,6 +552,7 @@ int main(int argc, char** argv) {
 
 	for (VkFence fence : inflight_fences) vkDestroyFence(device.logical_device, fence, null);
 
+	index_buffer.Destroy();
 	vertex_buffer.Destroy();
 	staging_buffer.Destroy();
 
