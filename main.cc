@@ -38,6 +38,7 @@ static VkPipelineLayout pipeline_layout;
 static VkPipeline pipeline;
 static GpuBuffer staging_buffer;
 static GpuBuffer vertex_buffer;
+static GpuBuffer index_buffer;
 
 static const u32 INFLIGHT_FRAME_COUNT = 2;
 
@@ -116,23 +117,26 @@ static VkShaderModule LoadShader(String path) {
 }
 
 static void InitVertexBuffer() {
-	Vertex vertices[5] = {
+	Vertex vertices[4] = {
 		{ .position = {  1, -1 }, .color = { 1, 0, 0 } },
 		{ .position = {  1,  1 }, .color = { 0, 1, 0 } },
 		{ .position = { -1,  1 }, .color = { 0, 0, 1 } },
 		{ .position = { -1, -1 }, .color = { 1, 1, 0 } },
-		{ .position = {  1, -1 }, .color = { 1, 0, 1 } },
 	};
 
-	staging_buffer = CreateBuffer(sizeof(vertices), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	u16 indices[5] = {
+		0, 1, 2, 3, 0
+	};
 
-	void* mem;
-	vkMapMemory(device.logical_device, staging_buffer.memory, 0, staging_buffer.size, 0, &mem);
-	CopyMemory(mem, vertices, staging_buffer.size);
-	vkUnmapMemory(device.logical_device, staging_buffer.memory);
+	staging_buffer = CreateBuffer(Max((u64)sizeof(vertices), (u64)sizeof(indices)), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	vertex_buffer  = CreateBuffer(sizeof(vertices), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	index_buffer   = CreateBuffer(sizeof(indices),  VK_BUFFER_USAGE_INDEX_BUFFER_BIT  | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-	vertex_buffer = CreateBuffer(sizeof(vertices), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-	CopyBuffer(vertex_buffer, staging_buffer);
+	staging_buffer.Upload(vertices, sizeof(vertices));
+	CopyBuffer(vertex_buffer, staging_buffer, sizeof(vertices));
+
+	staging_buffer.Upload(indices, sizeof(indices));
+	CopyBuffer(index_buffer, staging_buffer, sizeof(indices));
 }
 
 static void CreateRenderPass() {
@@ -415,7 +419,8 @@ static void RecordCommandBuffer(VkCommandBuffer command_buffer, u32 image_index)
 	vkCmdSetViewport(command_buffer, 0, 1, &viewport);
 	vkCmdSetScissor(command_buffer,  0, 1, &scissor);
 	vkCmdBindVertexBuffers(command_buffer, 0, 1, &vertex_buffer.buffer, offsets);
-	vkCmdDraw(command_buffer, 5, 1, 0, 0);
+	vkCmdBindIndexBuffer(command_buffer, index_buffer.buffer, 0, VK_INDEX_TYPE_UINT16);
+	vkCmdDrawIndexed(command_buffer, 5, 1, 0, 0, 0);
 	vkCmdEndRenderPass(command_buffer);
 
 	vk_result = vkEndCommandBuffer(command_buffer);

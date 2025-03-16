@@ -28,15 +28,29 @@ static GpuBuffer CreateBuffer(u64 size,  VkBufferUsageFlags usage, VkMemoryPrope
 
 static void CopyBuffer(GpuBuffer dst, GpuBuffer src) {
 	Assert(dst.size >= src.size);
+	CopyBuffer(dst, src, src.size);
+}
+
+static void CopyBuffer(GpuBuffer dst, GpuBuffer src, u64 size) {
+	Assert(dst.size >= size);
 
 	CommandBuffer proc = device.CreateCommandBuffer();
 	proc.Begin(true);
-	proc.Transfer(dst.buffer, src.buffer, src.size);
+	proc.Transfer(dst.buffer, src.buffer, size);
 	proc.End();
 
 	device.general_queue->Execute(proc);
 
 	proc.Destroy();
+}
+
+void GpuBuffer::Upload(void* data, u64 size) {
+	Assert(this->size >= size);
+
+	void* mem;
+	vkMapMemory(device.logical_device, memory, 0, size, 0, &mem);
+	CopyMemory(mem, data, size);
+	vkUnmapMemory(device.logical_device, memory);
 }
 
 void GpuBuffer::Destroy() {
