@@ -1,7 +1,7 @@
 #include "gpu_buffer.h"
 #include "device.h"
 
-static GpuBuffer CreateBuffer(u64 size,  VkBufferUsageFlags usage, VkMemoryPropertyFlags properties) {
+static GpuBuffer CreateBuffer(u64 size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties) {
 	GpuBuffer result = {
 		.size = size,
 	};
@@ -44,13 +44,33 @@ static void CopyBuffer(GpuBuffer dst, GpuBuffer src, u64 size) {
 	proc.Destroy();
 }
 
+void* GpuBuffer::Map() {
+	if (!mapping)
+		vkMapMemory(device.logical_device, memory, 0, size, 0, &mapping);
+
+	return mapping;
+}
+
+void GpuBuffer::Unmap() {
+	Assert(mapping);
+
+	vkUnmapMemory(device.logical_device, memory);
+	mapping = null;
+}
+
+
 void GpuBuffer::Upload(void* data, u64 size) {
 	Assert(this->size >= size);
 
-	void* mem;
-	vkMapMemory(device.logical_device, memory, 0, size, 0, &mem);
-	CopyMemory(mem, data, size);
-	vkUnmapMemory(device.logical_device, memory);
+	bool already_mapped = mapping;
+
+	if (!already_mapped)
+		Map();
+
+	CopyMemory(mapping, data, size);
+
+	if (!already_mapped)
+		Unmap();
 }
 
 void GpuBuffer::Destroy() {

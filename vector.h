@@ -60,6 +60,9 @@ struct Vector4 {
 	f32 z;
 	f32 w;
 
+	Vector4(f32 x, f32 y, f32 z, f32 w)
+		: x(x), y(y), z(z), w(w) { }
+
 	explicit operator Vector2() { return Vector2(x, y); }
 	explicit operator Vector3() { return Vector3(x, y, z); }
 

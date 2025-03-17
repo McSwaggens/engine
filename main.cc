@@ -22,6 +22,7 @@
 
 #include "vk_helper.h"
 #include "vector.h"
+#include "matrix.h"
 #include "quaternion.h"
 #include "list.h"
 #include "swapchain.h"
@@ -39,13 +40,22 @@ static VkPipeline pipeline;
 static GpuBuffer staging_buffer;
 static GpuBuffer vertex_buffer;
 static GpuBuffer index_buffer;
+static VkDescriptorSetLayout descriptor_set_layout;
+static VkDescriptorPool descriptor_pool;
 
 static const u32 INFLIGHT_FRAME_COUNT = 2;
+
+struct Ubo {
+	f32 time;
+	alignas(16) Matrix4 mvp;
+};
 
 static List<VkCommandBuffer> command_buffers;
 static List<VkSemaphore>     image_available_semaphores;
 static List<VkSemaphore>     render_finished_semaphores;
 static List<VkFence>         inflight_fences;
+static List<GpuBuffer>       uniform_buffers;
+static List<VkDescriptorSet> uniform_descriptor_sets;
 
 struct Vertex {
 	Vector2 position;
@@ -197,7 +207,7 @@ static void CreateRenderPass() {
 	Assert(vk_result == VK_SUCCESS);
 }
 
-static void CreatePipeline() {
+static void CreateGraphicsPipeline() {
 	// Shaders
 	VkPipelineShaderStageCreateInfo vert_stage_info = {
 		.sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -331,8 +341,8 @@ static void CreatePipeline() {
 	VkPipelineLayoutCreateInfo pipeline_layout_info = {
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
 
-		.pSetLayouts = null,
-		.setLayoutCount = 0,
+		.pSetLayouts = &descriptor_set_layout,
+		.setLayoutCount = 1,
 
 		.pPushConstantRanges = null,
 		.pushConstantRangeCount = 0,
@@ -371,7 +381,7 @@ static void CreatePipeline() {
 	Assert(vk_result == VK_SUCCESS);
 }
 
-static void RecordCommandBuffer(VkCommandBuffer command_buffer, u32 image_index) {
+static void RecordCommandBuffer(VkCommandBuffer command_buffer, u32 image_index, u32 inflight_frame_index) {
 	VkCommandBufferBeginInfo begin_info = {
 		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
 		.flags = 0,
@@ -420,11 +430,110 @@ static void RecordCommandBuffer(VkCommandBuffer command_buffer, u32 image_index)
 	vkCmdSetScissor(command_buffer,  0, 1, &scissor);
 	vkCmdBindVertexBuffers(command_buffer, 0, 1, &vertex_buffer.buffer, offsets);
 	vkCmdBindIndexBuffer(command_buffer, index_buffer.buffer, 0, VK_INDEX_TYPE_UINT16);
+	vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &uniform_descriptor_sets[inflight_frame_index], 0, null);
 	vkCmdDrawIndexed(command_buffer, 5, 1, 0, 0, 0);
 	vkCmdEndRenderPass(command_buffer);
 
 	vk_result = vkEndCommandBuffer(command_buffer);
 	Assert(vk_result == VK_SUCCESS);
+}
+
+static void CreateDescriptorPool() {
+	VkDescriptorPoolSize pool_size = {
+		.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+		.descriptorCount = INFLIGHT_FRAME_COUNT,
+	};
+
+	VkDescriptorPoolCreateInfo pool_info = {
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+		.poolSizeCount = 1,
+		.pPoolSizes = &pool_size,
+		.maxSets = INFLIGHT_FRAME_COUNT,
+	};
+
+	VkResult vk_result = vkCreateDescriptorPool(device.logical_device, &pool_info, null, &descriptor_pool);
+	Assert(vk_result == VK_SUCCESS);
+}
+
+static void CreateUbo() {
+	VkDescriptorSetLayoutBinding ubo_layout_binding = {
+		.binding = 0,
+		.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+		.descriptorCount = 1,
+		.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+		.pImmutableSamplers = null,
+	};
+
+	VkDescriptorSetLayoutCreateInfo layout_info = {
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+		.bindingCount = 1,
+		.pBindings = &ubo_layout_binding,
+		.flags = 0,
+	};
+
+	VkResult vk_result = vkCreateDescriptorSetLayout(device.logical_device, &layout_info, null, &descriptor_set_layout);
+	Assert(vk_result == VK_SUCCESS);
+
+	uniform_buffers.AssureCount(INFLIGHT_FRAME_COUNT);
+	for (u32 i = 0; i < INFLIGHT_FRAME_COUNT; i++) {
+		GpuBuffer* buffer = &uniform_buffers[i];
+		*buffer = CreateBuffer(sizeof(Ubo), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	}
+
+	VkDescriptorSetLayout layouts[INFLIGHT_FRAME_COUNT];
+	for (u32 i = 0; i < INFLIGHT_FRAME_COUNT; i++)
+		layouts[i] = descriptor_set_layout;
+
+	VkDescriptorSetAllocateInfo alloc_info = {
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+		.descriptorPool = descriptor_pool,
+
+		.pSetLayouts = layouts,
+		.descriptorSetCount = INFLIGHT_FRAME_COUNT,
+	};
+
+	uniform_descriptor_sets.AssureCount(INFLIGHT_FRAME_COUNT);
+	vk_result = vkAllocateDescriptorSets(device.logical_device, &alloc_info, uniform_descriptor_sets.elements);
+	Assert(vk_result == VK_SUCCESS);
+
+	for (u32 i = 0; i < INFLIGHT_FRAME_COUNT; i++) {
+		VkDescriptorBufferInfo buffer_info = {
+			.buffer = uniform_buffers[inflight_frame_index].buffer,
+			.range = sizeof(Ubo),
+			.offset = 0,
+		};
+
+		VkWriteDescriptorSet desc_write = {
+			.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+			.dstSet = uniform_descriptor_sets[i],
+			.dstBinding = 0,
+			.dstArrayElement = 0,
+			.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+			.descriptorCount = 1,
+			.pBufferInfo = &buffer_info,
+			.pImageInfo = null,
+			.pTexelBufferView = null,
+		};
+
+		vkUpdateDescriptorSets(device.logical_device, 1, &desc_write, 0, null);
+	}
+}
+
+static void UpdateUbo(u32 inflight_frame_index) {
+	GpuBuffer* buffer = &uniform_buffers[inflight_frame_index];
+	Ubo* ubo = (Ubo*)buffer->Map();
+
+	*ubo = {
+		.time = (f32)current_time,
+		.mvp  = Matrix4(
+			1, 0, 0, 0,
+			0, 1, 0, 0,
+			0, 0, 1, 0,
+			0, 0, 0, 1
+		),
+	};
+
+	buffer->Unmap();
 }
 
 static void DrawFrame() {
@@ -434,7 +543,7 @@ static void DrawFrame() {
 	u32 image = swapchain.GetNextImageIndex(image_available_semaphores[inflight_frame_index]);
 
 	vkResetCommandBuffer(command_buffers[inflight_frame_index], 0);
-	RecordCommandBuffer(command_buffers[inflight_frame_index], image);
+	RecordCommandBuffer(command_buffers[inflight_frame_index], image, inflight_frame_index);
 
 	// Wait for an image before rendering colors.
 	VkSemaphore          wait_semaphores[] = { image_available_semaphores[inflight_frame_index] };
@@ -442,6 +551,8 @@ static void DrawFrame() {
 
 	// Semaphores to signal when we're done rendering the frame.
 	VkSemaphore signal_semaphores[] = { render_finished_semaphores[inflight_frame_index] };
+
+	UpdateUbo(inflight_frame_index);
 
 	VkSubmitInfo submit_info = {
 		.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
@@ -492,10 +603,13 @@ int main(int argc, char** argv) {
 	vert = LoadShader("vert.spv");
 	frag = LoadShader("frag.spv");
 
+	CreateDescriptorPool();
+
 	InitVertexBuffer();
+	CreateUbo();
 
 	CreateRenderPass();
-	CreatePipeline();
+	CreateGraphicsPipeline();
 
 	swapchain.InitFrameBuffers(renderpass);
 
@@ -551,6 +665,8 @@ int main(int argc, char** argv) {
 	for (VkSemaphore semaphore : render_finished_semaphores) vkDestroySemaphore(device.logical_device, semaphore, null);
 
 	for (VkFence fence : inflight_fences) vkDestroyFence(device.logical_device, fence, null);
+
+	for (GpuBuffer buffer : uniform_buffers) buffer.Destroy();
 
 	index_buffer.Destroy();
 	vertex_buffer.Destroy();

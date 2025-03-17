@@ -49,6 +49,15 @@ struct List {
 		count = new_count;
 	}
 
+	void AssureCount(u32 new_count, T fill_value) {
+		AssureCapacity(new_count);
+
+		for (u32 i = count; i < new_count; i++)
+			elements[i] = fill_value;
+
+		count = new_count;
+	}
+
 	void Add(T t) {
 		AssureCapacity(count+1);
 		elements[count++] = t;
@@ -106,6 +115,20 @@ struct List {
 		}
 
 		count = l - elements;
+	}
+
+	void SetRange(u32 begin, u32 end, T value) {
+		Assert(begin < count);
+		Assert(end <= count);
+		Assert(begin <= end);
+
+		for (u32 i = begin; i < end; i++)
+			elements[i] = value;
+	}
+
+	void SetAll(T value) {
+		for (u32 i = 0; i < count; i++)
+			elements[i] = value;
 	}
 
 	void Pop(u32 n = 1) {
