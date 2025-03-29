@@ -45,6 +45,16 @@ static List<VkPhysicalDevice> QueryPhysicalDevices() {
 	return result;
 }
 
+static VKAPI_ATTR VkBool32 ValidationLayerDebugMessageCallback(
+	VkDebugUtilsMessageSeverityFlagBitsEXT severity,
+	VkDebugUtilsMessageTypeFlagsEXT type,
+	const VkDebugUtilsMessengerCallbackDataEXT* msg,
+	void* user_data) {
+
+	Print("%\n", CString(msg->pMessage));
+	return false;
+}
+
 void VkHelper::Init() {
 	enabled_layers.Add("VK_LAYER_KHRONOS_validation");
 
@@ -85,7 +95,32 @@ void VkHelper::Init() {
 	VkResult result = vkCreateInstance(&inst_info, null, &instance);
 	Assert(result == VK_SUCCESS);
 
+	InitDebugMessageCallback();
 	physical_devices = QueryPhysicalDevices();
+}
+
+void VkHelper::InitDebugMessageCallback() {
+	VkDebugUtilsMessengerCreateInfoEXT info = {
+		.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+
+		.messageSeverity =
+			VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
+			VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT    |
+			VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+			VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
+
+		.messageType =
+			VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT     |
+			VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT  |
+			VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT |
+			VK_DEBUG_UTILS_MESSAGE_TYPE_DEVICE_ADDRESS_BINDING_BIT_EXT,
+
+		.pUserData = null,
+		.pfnUserCallback = ValidationLayerDebugMessageCallback,
+	};
+
+	PFN_vkCreateDebugUtilsMessengerEXT vkCreateDebugUtilsMessengerEXT = (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
+	vkCreateDebugUtilsMessengerEXT(instance, &info, null, &debug_messenger);
 }
 
 static bool IsPhysicalDeviceGood(VkPhysicalDevice pdev, Window* window) {

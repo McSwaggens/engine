@@ -16,7 +16,10 @@ struct VkHelper {
 
 	List<VkPhysicalDevice> physical_devices;
 
+	VkDebugUtilsMessengerEXT debug_messenger;
+
 	void Init();
+	void InitDebugMessageCallback();
 	void Destroy();
 	VkPhysicalDevice FindPhysicalDevice(Window* window);
 } static vk_helper = { };
