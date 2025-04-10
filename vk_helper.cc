@@ -69,6 +69,7 @@ void VkHelper::Init() {
 
 	enabled_extensions.Add(glfw_required_extensions);
 	enabled_extensions.Add(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+	// enabled_extensions.Add(VK_EXT_DEVICE_ADDRESS_BINDING_REPORT_EXTENSION_NAME);
 	if (MACOS) enabled_extensions.Add(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
 
 	VkApplicationInfo app_info = {
@@ -119,8 +120,8 @@ void VkHelper::InitDebugMessageCallback() {
 		.messageType =
 			VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT     |
 			VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT  |
-			VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT |
-			VK_DEBUG_UTILS_MESSAGE_TYPE_DEVICE_ADDRESS_BINDING_BIT_EXT,
+			VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
+			// VK_DEBUG_UTILS_MESSAGE_TYPE_DEVICE_ADDRESS_BINDING_BIT_EXT,
 
 		.pUserData = null,
 		.pfnUserCallback = ValidationLayerDebugMessageCallback,

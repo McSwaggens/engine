@@ -50,49 +50,33 @@ struct Ubo {
 	alignas(16) Matrix4 mvp;
 };
 
-static List<VkCommandBuffer> command_buffers;
-static List<VkSemaphore>     image_available_semaphores;
-static List<VkSemaphore>     render_finished_semaphores;
-static List<VkFence>         inflight_fences;
-static List<GpuBuffer>       uniform_buffers;
-static List<VkDescriptorSet> uniform_descriptor_sets;
+struct Frame {
+	VkCommandBuffer command_buffer;
+	VkSemaphore     image_available_semaphore;
+	VkSemaphore     render_finished_semaphore;
+	VkFence         inflight_fence;
+	GpuBuffer       uniform_buffer;
+	VkDescriptorSet uniform_descriptor_set;
+
+	void Destroy() {
+		vkDestroySemaphore(device.logical_device, image_available_semaphore, null);
+		vkDestroySemaphore(device.logical_device, render_finished_semaphore, null);
+		vkDestroyFence(device.logical_device, inflight_fence, null);
+		uniform_buffer.Destroy();
+	}
+};
+
+static Frame frames[INFLIGHT_FRAME_COUNT] = { };
 
 struct Vertex {
 	Vector2 position;
 	Vector3 color;
 };
 
-static VkVertexInputBindingDescription CreateVertexBindDesc() {
-	VkVertexInputBindingDescription result = {
-		.binding   = 0,
-		.stride    = sizeof(Vertex),
-		.inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
-	};
-
-	return result;
-}
-
-static void GenerateAttributeDescs(VkVertexInputAttributeDescription attributes[2]) {
-	attributes[0] = {
-		.binding = 0,
-		.location = 0,
-		.format = VK_FORMAT_R32G32_SFLOAT,
-		.offset = offsetof(Vertex, position),
-	};
-
-	attributes[1] = {
-		.binding = 0,
-		.location = 1,
-		.format = VK_FORMAT_R32G32B32_SFLOAT,
-		.offset = offsetof(Vertex, color),
-	};
-}
-
 static u64 frame_counter = 0;
-static u64 inflight_frame_index = 0;
-static f64 current_time          = 0.0;
-static u64 time_us       = 0;
-static u64 init_time_us  = 0;
+static f64 current_time = 0.0;
+static u64 time_us = 0;
+static u64 init_time_us = 0;
 static u64 fps = 0;
 
 static void InitTime() {
@@ -240,9 +224,26 @@ static void CreateGraphicsPipeline() {
 		.dynamicStateCount = sizeof(dynamic_states) / sizeof(*dynamic_states),
 	};
 
-	VkVertexInputBindingDescription bind = CreateVertexBindDesc();
-	VkVertexInputAttributeDescription vertex_attributes[2];
-	GenerateAttributeDescs(vertex_attributes);
+	VkVertexInputBindingDescription bind = {
+		.binding   = 0,
+		.stride    = sizeof(Vertex),
+		.inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+	};
+
+	VkVertexInputAttributeDescription vertex_attributes[2] = {
+		{
+			.binding = 0,
+			.location = 0,
+			.format = VK_FORMAT_R32G32_SFLOAT,
+			.offset = offsetof(Vertex, position),
+		},
+		{
+			.binding = 0,
+			.location = 1,
+			.format = VK_FORMAT_R32G32B32_SFLOAT,
+			.offset = offsetof(Vertex, color),
+		}
+	};
 
 	// Vertex Input
 	VkPipelineVertexInputStateCreateInfo vertex_input_info = {
@@ -381,14 +382,14 @@ static void CreateGraphicsPipeline() {
 	Assert(vk_result == VK_SUCCESS);
 }
 
-static void RecordCommandBuffer(VkCommandBuffer command_buffer, u32 image_index, u32 inflight_frame_index) {
+static void RecordCommandBuffer(Frame* frame, u32 image_index) {
 	VkCommandBufferBeginInfo begin_info = {
 		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
 		.flags = 0,
 		.pInheritanceInfo = null,
 	};
 
-	VkResult vk_result = vkBeginCommandBuffer(command_buffer, &begin_info);
+	VkResult vk_result = vkBeginCommandBuffer(frame->command_buffer, &begin_info);
 	Assert(vk_result == VK_SUCCESS);
 
 	VkClearValue clear_color = {
@@ -424,17 +425,17 @@ static void RecordCommandBuffer(VkCommandBuffer command_buffer, u32 image_index,
 
 	VkDeviceSize offsets[1] = { 0 };
 
-	vkCmdBeginRenderPass(command_buffer, &renderpass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
-	vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
-	vkCmdSetViewport(command_buffer, 0, 1, &viewport);
-	vkCmdSetScissor(command_buffer,  0, 1, &scissor);
-	vkCmdBindVertexBuffers(command_buffer, 0, 1, &vertex_buffer.buffer, offsets);
-	vkCmdBindIndexBuffer(command_buffer, index_buffer.buffer, 0, VK_INDEX_TYPE_UINT16);
-	vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &uniform_descriptor_sets[inflight_frame_index], 0, null);
-	vkCmdDrawIndexed(command_buffer, 5, 1, 0, 0, 0);
-	vkCmdEndRenderPass(command_buffer);
+	vkCmdBeginRenderPass(frame->command_buffer, &renderpass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
+	vkCmdBindPipeline(frame->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+	vkCmdSetViewport(frame->command_buffer, 0, 1, &viewport);
+	vkCmdSetScissor(frame->command_buffer,  0, 1, &scissor);
+	vkCmdBindVertexBuffers(frame->command_buffer, 0, 1, &vertex_buffer.buffer, offsets);
+	vkCmdBindIndexBuffer(frame->command_buffer, index_buffer.buffer, 0, VK_INDEX_TYPE_UINT16);
+	vkCmdBindDescriptorSets(frame->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &frame->uniform_descriptor_set, 0, null);
+	vkCmdDrawIndexed(frame->command_buffer, 5, 1, 0, 0, 0);
+	vkCmdEndRenderPass(frame->command_buffer);
 
-	vk_result = vkEndCommandBuffer(command_buffer);
+	vk_result = vkEndCommandBuffer(frame->command_buffer);
 	Assert(vk_result == VK_SUCCESS);
 }
 
@@ -474,11 +475,8 @@ static void CreateUbo() {
 	VkResult vk_result = vkCreateDescriptorSetLayout(device.logical_device, &layout_info, null, &descriptor_set_layout);
 	Assert(vk_result == VK_SUCCESS);
 
-	uniform_buffers.AssureCount(INFLIGHT_FRAME_COUNT);
-	for (u32 i = 0; i < INFLIGHT_FRAME_COUNT; i++) {
-		GpuBuffer* buffer = &uniform_buffers[i];
-		*buffer = CreateBuffer(sizeof(Ubo), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-	}
+	for (Frame& frame : frames)
+		frame.uniform_buffer = CreateBuffer(sizeof(Ubo), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
 	VkDescriptorSetLayout layouts[INFLIGHT_FRAME_COUNT];
 	for (u32 i = 0; i < INFLIGHT_FRAME_COUNT; i++)
@@ -492,13 +490,16 @@ static void CreateUbo() {
 		.descriptorSetCount = INFLIGHT_FRAME_COUNT,
 	};
 
-	uniform_descriptor_sets.AssureCount(INFLIGHT_FRAME_COUNT);
-	vk_result = vkAllocateDescriptorSets(device.logical_device, &alloc_info, uniform_descriptor_sets.elements);
+	VkDescriptorSet uniform_descriptor_sets[INFLIGHT_FRAME_COUNT];
+	vk_result = vkAllocateDescriptorSets(device.logical_device, &alloc_info, uniform_descriptor_sets);
 	Assert(vk_result == VK_SUCCESS);
 
 	for (u32 i = 0; i < INFLIGHT_FRAME_COUNT; i++) {
+		Frame* frame = &frames[i];
+		frame->uniform_descriptor_set = uniform_descriptor_sets[i];
+
 		VkDescriptorBufferInfo buffer_info = {
-			.buffer = uniform_buffers[inflight_frame_index].buffer,
+			.buffer = frame->uniform_buffer.buffer,
 			.range = sizeof(Ubo),
 			.offset = 0,
 		};
@@ -519,8 +520,8 @@ static void CreateUbo() {
 	}
 }
 
-static void UpdateUbo(u32 inflight_frame_index) {
-	GpuBuffer* buffer = &uniform_buffers[inflight_frame_index];
+static void UpdateUbo(Frame* frame) {
+	GpuBuffer* buffer = &frame->uniform_buffer;
 	Ubo* ubo = (Ubo*)buffer->Map();
 
 	*ubo = {
@@ -536,23 +537,23 @@ static void UpdateUbo(u32 inflight_frame_index) {
 	buffer->Unmap();
 }
 
-static void DrawFrame() {
-	vkWaitForFences(device.logical_device, 1, &inflight_fences[inflight_frame_index], true, -1);
-	vkResetFences(device.logical_device,   1, &inflight_fences[inflight_frame_index]);
+static void DrawFrame(Frame* frame) {
+	vkWaitForFences(device.logical_device, 1, &frame->inflight_fence, true, -1);
+	vkResetFences(device.logical_device,   1, &frame->inflight_fence);
 
-	u32 image = swapchain.GetNextImageIndex(image_available_semaphores[inflight_frame_index]);
+	u32 image = swapchain.GetNextImageIndex(frame->image_available_semaphore);
 
-	vkResetCommandBuffer(command_buffers[inflight_frame_index], 0);
-	RecordCommandBuffer(command_buffers[inflight_frame_index], image, inflight_frame_index);
+	vkResetCommandBuffer(frame->command_buffer, 0);
+	RecordCommandBuffer(frame, image);
 
 	// Wait for an image before rendering colors.
-	VkSemaphore          wait_semaphores[] = { image_available_semaphores[inflight_frame_index] };
+	VkSemaphore          wait_semaphores[] = { frame->image_available_semaphore };
 	VkPipelineStageFlags wait_stages[]     = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT    };
 
 	// Semaphores to signal when we're done rendering the frame.
-	VkSemaphore signal_semaphores[] = { render_finished_semaphores[inflight_frame_index] };
+	VkSemaphore signal_semaphores[] = { frame->render_finished_semaphore };
 
-	UpdateUbo(inflight_frame_index);
+	UpdateUbo(frame);
 
 	VkSubmitInfo submit_info = {
 		.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
@@ -560,14 +561,14 @@ static void DrawFrame() {
 		.pWaitSemaphores = wait_semaphores,
 		.pWaitDstStageMask = wait_stages,
 
-		.pCommandBuffers = &command_buffers[inflight_frame_index],
+		.pCommandBuffers = &frame->command_buffer,
 		.commandBufferCount = 1,
 
 		.signalSemaphoreCount = 1,
 		.pSignalSemaphores = signal_semaphores,
 	};
 
-	VkResult vk_result = vkQueueSubmit(device.general_queue->vk, 1, &submit_info, inflight_fences[inflight_frame_index]);
+	VkResult vk_result = vkQueueSubmit(device.general_queue->vk, 1, &submit_info, frame->inflight_fence);
 	Assert(vk_result == VK_SUCCESS);
 
 	VkPresentInfoKHR present_info = {
@@ -613,16 +614,14 @@ int main(int argc, char** argv) {
 
 	swapchain.InitFrameBuffers(renderpass);
 
-	command_buffers.AssureCount(INFLIGHT_FRAME_COUNT);
-	image_available_semaphores.AssureCount(INFLIGHT_FRAME_COUNT);
-	render_finished_semaphores.AssureCount(INFLIGHT_FRAME_COUNT);
-	inflight_fences.AssureCount(INFLIGHT_FRAME_COUNT);
-
-	device.CreateCommandBuffers(command_buffers.elements, INFLIGHT_FRAME_COUNT);
+	VkCommandBuffer command_buffers[INFLIGHT_FRAME_COUNT];
+	device.CreateCommandBuffers(command_buffers, INFLIGHT_FRAME_COUNT);
 	for (u32 i = 0; i < INFLIGHT_FRAME_COUNT; i++) {
-		image_available_semaphores[i] = device.CreateSemaphore();
-		render_finished_semaphores[i] = device.CreateSemaphore();
-		inflight_fences[i] = device.CreateFence(true);
+		Frame* frame = &frames[i];
+		frames[i].image_available_semaphore = device.CreateSemaphore();
+		frames[i].render_finished_semaphore = device.CreateSemaphore();
+		frames[i].inflight_fence = device.CreateFence(true);
+		frames[i].command_buffer = command_buffers[i];
 	}
 
 	Print("Running...\n");
@@ -634,13 +633,13 @@ int main(int argc, char** argv) {
 	u64 last_second_frame_counter = 0;
 
 	while (!window.ShouldClose()) {
+		Frame* frame = &frames[frame_counter % INFLIGHT_FRAME_COUNT];
+
 		UpdateTime();
 		window.Update();
 
 		if (window.has_size_changed)
 			swapchain.Reload(&window, renderpass);
-
-		inflight_frame_index = frame_counter % INFLIGHT_FRAME_COUNT;
 
 		if (current_time - last_second_time >= 1.0) {
 			last_second_time = current_time;
@@ -651,7 +650,7 @@ int main(int argc, char** argv) {
 			LogVar(fps);
 		}
 
-		DrawFrame();
+		DrawFrame(frame);
 
 		frame_counter++;
 		last_frame_time = current_time;
@@ -661,12 +660,9 @@ int main(int argc, char** argv) {
 	device.WaitIdle();
 
 	Print("Terminating...\n");
-	for (VkSemaphore semaphore : image_available_semaphores) vkDestroySemaphore(device.logical_device, semaphore, null);
-	for (VkSemaphore semaphore : render_finished_semaphores) vkDestroySemaphore(device.logical_device, semaphore, null);
 
-	for (VkFence fence : inflight_fences) vkDestroyFence(device.logical_device, fence, null);
-
-	for (GpuBuffer buffer : uniform_buffers) buffer.Destroy();
+	for (Frame& frame : frames)
+		frame.Destroy();
 
 	index_buffer.Destroy();
 	vertex_buffer.Destroy();
