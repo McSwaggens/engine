@@ -51,7 +51,14 @@ static VKAPI_ATTR VkBool32 ValidationLayerDebugMessageCallback(
 	const VkDebugUtilsMessengerCallbackDataEXT* msg,
 	void* user_data) {
 
-	Print("%\n", CString(msg->pMessage));
+	if (!msg->pMessage)
+		return false;
+
+	if (severity & (VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)) {
+		Print("%\n", CString(msg->pMessage));
+		Assert(false);
+	}
+
 	return false;
 }
 
