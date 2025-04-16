@@ -260,7 +260,7 @@ static void CreateGraphicsPipeline() {
 	VkPipelineInputAssemblyStateCreateInfo input_assembly_state_info = {
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
 		.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP,
-		.primitiveRestartEnable = false,
+		.primitiveRestartEnable = true, // CANNOT DISABLE ON MACOS.
 	};
 
 	// Viewport
