@@ -167,5 +167,7 @@ VkPhysicalDevice VkHelper::FindPhysicalDevice(Window* window) {
 }
 
 void VkHelper::Destroy() {
+	PFN_vkDestroyDebugUtilsMessengerEXT vkDestroyDebugUtilsMessengerEXT = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
+	vkDestroyDebugUtilsMessengerEXT(instance, debug_messenger, null);
 	vkDestroyInstance(instance, null);
 }

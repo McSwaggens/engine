@@ -664,6 +664,9 @@ int main(int argc, char** argv) {
 	for (Frame& frame : frames)
 		frame.Destroy();
 
+	vkDestroyDescriptorSetLayout(device.logical_device, descriptor_set_layout, null);
+	vkDestroyDescriptorPool(device.logical_device, descriptor_pool, null);
+
 	index_buffer.Destroy();
 	vertex_buffer.Destroy();
 	staging_buffer.Destroy();
