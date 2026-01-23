@@ -4,6 +4,7 @@
 #include "general.h"
 #include "assert.h"
 #include "alloc.h"
+#include "math.h"
 
 template<typename T>
 struct List {

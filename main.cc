@@ -19,6 +19,7 @@
 #include "queue.cc"
 #include "vk_helper.cc"
 #include "gpu_buffer.cc"
+#include "command_buffer.cc"
 
 #include "vk_helper.h"
 #include "vector.h"
@@ -52,19 +53,21 @@ struct Ubo {
 
 struct Frame {
 	VkCommandBuffer command_buffer;
-	VkSemaphore     image_available_semaphore;
-	VkSemaphore     render_finished_semaphore;
 	VkFence         inflight_fence;
 	GpuBuffer       uniform_buffer;
 	VkDescriptorSet uniform_descriptor_set;
 
 	void Destroy() {
-		vkDestroySemaphore(device.logical_device, image_available_semaphore, null);
-		vkDestroySemaphore(device.logical_device, render_finished_semaphore, null);
 		vkDestroyFence(device.logical_device, inflight_fence, null);
 		uniform_buffer.Destroy();
 	}
 };
+
+// Semaphores are per-swapchain-image, not per-frame, to avoid reuse conflicts.
+// See: https://docs.vulkan.org/guide/latest/swapchain_semaphore_reuse.html
+static VkSemaphore* image_available_semaphores = null;
+static VkSemaphore* render_finished_semaphores = null;
+static u32 swapchain_semaphore_count = 0;
 
 static Frame frames[INFLIGHT_FRAME_COUNT] = { };
 
@@ -537,21 +540,29 @@ static void UpdateUbo(Frame* frame) {
 	buffer->Unmap();
 }
 
+static u32 current_semaphore_index = 0;
+
 static void DrawFrame(Frame* frame) {
 	vkWaitForFences(device.logical_device, 1, &frame->inflight_fence, true, -1);
-	vkResetFences(device.logical_device,   1, &frame->inflight_fence);
 
-	u32 image = swapchain.GetNextImageIndex(frame->image_available_semaphore);
+	// Use per-swapchain-image semaphores to avoid reuse conflicts.
+	// We cycle through them; by the time we wrap around, that image's presentation is complete.
+	VkSemaphore acquire_semaphore = image_available_semaphores[current_semaphore_index];
+	VkSemaphore render_semaphore = render_finished_semaphores[current_semaphore_index];
+	current_semaphore_index = (current_semaphore_index + 1) % swapchain_semaphore_count;
 
+	u32 image = swapchain.GetNextImageIndex(acquire_semaphore);
+
+	vkResetFences(device.logical_device, 1, &frame->inflight_fence);
 	vkResetCommandBuffer(frame->command_buffer, 0);
 	RecordCommandBuffer(frame, image);
 
 	// Wait for an image before rendering colors.
-	VkSemaphore          wait_semaphores[] = { frame->image_available_semaphore };
+	VkSemaphore          wait_semaphores[] = { acquire_semaphore };
 	VkPipelineStageFlags wait_stages[]     = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT    };
 
 	// Semaphores to signal when we're done rendering the frame.
-	VkSemaphore signal_semaphores[] = { frame->render_finished_semaphore };
+	VkSemaphore signal_semaphores[] = { render_semaphore };
 
 	UpdateUbo(frame);
 
@@ -617,11 +628,19 @@ int main(int argc, char** argv) {
 	VkCommandBuffer command_buffers[INFLIGHT_FRAME_COUNT];
 	device.CreateCommandBuffers(command_buffers, INFLIGHT_FRAME_COUNT);
 	for (u32 i = 0; i < INFLIGHT_FRAME_COUNT; i++) {
-		Frame* frame = &frames[i];
-		frames[i].image_available_semaphore = device.CreateSemaphore();
-		frames[i].render_finished_semaphore = device.CreateSemaphore();
 		frames[i].inflight_fence = device.CreateFence(true);
 		frames[i].command_buffer = command_buffers[i];
+	}
+
+	// Create enough semaphores to avoid reuse conflicts.
+	// Need (in_flight_frames + swapchain_images) to ensure we don't reuse a semaphore
+	// until its previous use has completed through both queue submit and presentation.
+	swapchain_semaphore_count = INFLIGHT_FRAME_COUNT + swapchain.images.count;
+	image_available_semaphores = (VkSemaphore*)AllocMemory(sizeof(VkSemaphore) * swapchain_semaphore_count);
+	render_finished_semaphores = (VkSemaphore*)AllocMemory(sizeof(VkSemaphore) * swapchain_semaphore_count);
+	for (u32 i = 0; i < swapchain_semaphore_count; i++) {
+		image_available_semaphores[i] = device.CreateSemaphore();
+		render_finished_semaphores[i] = device.CreateSemaphore();
 	}
 
 	Print("Running...\n");
@@ -663,6 +682,13 @@ int main(int argc, char** argv) {
 
 	for (Frame& frame : frames)
 		frame.Destroy();
+
+	for (u32 i = 0; i < swapchain_semaphore_count; i++) {
+		vkDestroySemaphore(device.logical_device, image_available_semaphores[i], null);
+		vkDestroySemaphore(device.logical_device, render_finished_semaphores[i], null);
+	}
+	FreeMemory(image_available_semaphores, sizeof(VkSemaphore) * swapchain_semaphore_count);
+	FreeMemory(render_finished_semaphores, sizeof(VkSemaphore) * swapchain_semaphore_count);
 
 	vkDestroyDescriptorSetLayout(device.logical_device, descriptor_set_layout, null);
 	vkDestroyDescriptorPool(device.logical_device, descriptor_pool, null);

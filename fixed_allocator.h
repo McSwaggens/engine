@@ -1,6 +1,9 @@
 #ifndef FIXED_ALLOCATOR_H
 #define FIXED_ALLOCATOR_H
 
+#include "general.h"
+#include "assert.h"
+
 template<typename T, u32 N>
 struct FixedAllocator {
 	T stack[N];

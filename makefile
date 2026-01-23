@@ -17,7 +17,7 @@ program_xxx: *.cc *.h shaders
 		-O0 -g3 \
 		-lglfw -lvulkan -lm \
 		-std=c++20 \
-		-Wno-writable-strings -Wno-reorder-init-list -Wno-vla-cxx-extension \
+		-Wno-writable-strings -Wno-reorder-init-list -Wno-vla-cxx-extension -Wno-undefined-internal \
 		-DMACOS=$(IS_MACOS) \
 		-DLINUX=$(IS_LINUX) \
 		-o program

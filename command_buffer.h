@@ -2,9 +2,11 @@
 #define COMMAND_BUFFER_H
 
 #include "general.h"
-#include "print.h"
+#include "assert.h"
+#include "vk_helper.h"
 
 #include <vulkan/vulkan.h>
+#include <vulkan/vulkan_core.h>
 
 struct CommandBuffer {
 	VkCommandBuffer handle;
@@ -23,7 +25,8 @@ struct CommandBuffer {
 		vkBeginCommandBuffer(handle, &info);
 		recording = true;
 	}
-	void End()   {
+
+	void End() {
 		vkEndCommandBuffer(handle);
 		recording = false;
 	}
@@ -45,9 +48,7 @@ struct CommandBuffer {
 		vkCmdCopyBuffer(handle, src, dst, 1, &region);
 	}
 
-	void Destroy() {
-		// vkDestroyBuffer(device.logical_device, handle, null);
-	}
+	void Destroy();
 };
 
 #endif // COMMAND_BUFFER_H

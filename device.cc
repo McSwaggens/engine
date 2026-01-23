@@ -1,8 +1,10 @@
 #include "device.h"
 
 #include "fixed_allocator.h"
-#include <vulkan/vulkan.h>
 #include "vk_helper.h"
+#include "print.h"
+
+#include <vulkan/vulkan.h>
 
 void Device::Init(VkPhysicalDevice pdev, QueueFamilyTable qft) {
 	physical_device = pdev;

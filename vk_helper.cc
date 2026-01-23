@@ -1,5 +1,7 @@
 #include "vk_helper.h"
 
+#include <GLFW/glfw3.h>
+
 #include "print.h"
 #include "assert.h"
 
@@ -45,6 +47,18 @@ static List<VkPhysicalDevice> QueryPhysicalDevices() {
 	return result;
 }
 
+static String ToString(VkDebugUtilsMessageSeverityFlagBitsEXT flag) {
+	switch (flag) {
+		case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT: return "VERBOSE";
+		case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT:    return "INFO";
+		case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT: return "WARNING";
+		case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:   return "ERROR";
+		default:
+			Assert(false);
+			return "?";
+	}
+}
+
 static VKAPI_ATTR VkBool32 ValidationLayerDebugMessageCallback(
 	VkDebugUtilsMessageSeverityFlagBitsEXT severity,
 	VkDebugUtilsMessageTypeFlagsEXT type,
@@ -55,7 +69,7 @@ static VKAPI_ATTR VkBool32 ValidationLayerDebugMessageCallback(
 		return false;
 
 	if (severity & (VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)) {
-		Print("%\n", CString(msg->pMessage));
+		Print("%: %\n", ToString(severity), CString(msg->pMessage));
 		Assert(false);
 	}
 

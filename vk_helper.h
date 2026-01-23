@@ -21,7 +21,7 @@ struct VkHelper {
 	void Init();
 	void InitDebugMessageCallback();
 	void Destroy();
-	VkPhysicalDevice FindPhysicalDevice(Window* window);
+	VkPhysicalDevice FindPhysicalDevice(struct Window* window);
 } static vk_helper = { };
 
 static String ToString(VkResult result) {

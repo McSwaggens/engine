@@ -1,6 +1,8 @@
 #ifndef QUATERNION_H
 #define QUATERNION_H
 
+#include "general.h"
+
 struct Quaternion {
 	f32 r;
 	f32 i;

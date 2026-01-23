@@ -1,6 +1,8 @@
 #ifndef ARRAY_H
 #define ARRAY_H
 
+#include "general.h"
+
 template<typename T>
 struct Array {
 	T*  data = null;

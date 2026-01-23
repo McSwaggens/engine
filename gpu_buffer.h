@@ -3,6 +3,7 @@
 
 #include "general.h"
 #include "assert.h"
+#include "image.h"
 #include <vulkan/vulkan.h>
 
 struct GpuBuffer {
@@ -19,6 +20,11 @@ struct GpuBuffer {
 	void  Unmap();
 
 	void Upload(void* data, u64 size);
+
+	void Upload(struct Image* image) {
+		// Upload(image->data, image->GetSize());
+	}
+
 	void Destroy();
 
 	void* GetMapping() {
