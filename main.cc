@@ -56,18 +56,16 @@ struct Frame {
 	VkFence         inflight_fence;
 	GpuBuffer       uniform_buffer;
 	VkDescriptorSet uniform_descriptor_set;
+	VkSemaphore     image_available_semaphore;
+	VkSemaphore     render_finished_semaphore;
 
 	void Destroy() {
 		vkDestroyFence(device.logical_device, inflight_fence, null);
+		vkDestroySemaphore(device.logical_device, image_available_semaphore, null);
+		vkDestroySemaphore(device.logical_device, render_finished_semaphore, null);
 		uniform_buffer.Destroy();
 	}
 };
-
-// Semaphores are per-swapchain-image, not per-frame, to avoid reuse conflicts.
-// See: https://docs.vulkan.org/guide/latest/swapchain_semaphore_reuse.html
-static VkSemaphore* image_available_semaphores = null;
-static VkSemaphore* render_finished_semaphores = null;
-static u32 swapchain_semaphore_count = 0;
 
 static Frame frames[INFLIGHT_FRAME_COUNT] = { };
 
@@ -114,15 +112,23 @@ static VkShaderModule LoadShader(String path) {
 }
 
 static void InitVertexBuffer() {
-	Vertex vertices[4] = {
-		{ .position = {  1, -1 }, .color = { 1, 0, 0 } },
-		{ .position = {  1,  1 }, .color = { 0, 1, 0 } },
-		{ .position = { -1,  1 }, .color = { 0, 0, 1 } },
-		{ .position = { -1, -1 }, .color = { 1, 1, 0 } },
+	Vertex vertices[8] = {
+		// First rectangle
+		{ .position = {  0.5, -0.5 }, .color = { 1, 0, 0 } },
+		{ .position = {  0.5,  0.5 }, .color = { 0, 1, 0 } },
+		{ .position = { -0.5,  0.5 }, .color = { 0, 0, 1 } },
+		{ .position = { -0.5, -0.5 }, .color = { 1, 1, 0 } },
+		// Second rectangle
+		{ .position = {  1.5,  0.0 }, .color = { 1, 0, 1 } },
+		{ .position = {  1.5,  1.0 }, .color = { 0, 1, 1 } },
+		{ .position = {  0.5,  1.0 }, .color = { 1, 1, 1 } },
+		{ .position = {  0.5,  0.0 }, .color = { 0.5, 0.5, 0 } },
 	};
 
-	u16 indices[5] = {
-		0, 1, 2, 3, 0
+	u16 indices[11] = {
+		0, 1, 2, 3, 0,
+		0xFFFF, // Primitive restart
+		4, 5, 6, 7, 4
 	};
 
 	staging_buffer = CreateBuffer(Max((u64)sizeof(vertices), (u64)sizeof(indices)), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
@@ -435,7 +441,7 @@ static void RecordCommandBuffer(Frame* frame, u32 image_index) {
 	vkCmdBindVertexBuffers(frame->command_buffer, 0, 1, &vertex_buffer.buffer, offsets);
 	vkCmdBindIndexBuffer(frame->command_buffer, index_buffer.buffer, 0, VK_INDEX_TYPE_UINT16);
 	vkCmdBindDescriptorSets(frame->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &frame->uniform_descriptor_set, 0, null);
-	vkCmdDrawIndexed(frame->command_buffer, 5, 1, 0, 0, 0);
+	vkCmdDrawIndexed(frame->command_buffer, 11, 1, 0, 0, 0);
 	vkCmdEndRenderPass(frame->command_buffer);
 
 	vk_result = vkEndCommandBuffer(frame->command_buffer);
@@ -540,29 +546,21 @@ static void UpdateUbo(Frame* frame) {
 	buffer->Unmap();
 }
 
-static u32 current_semaphore_index = 0;
-
 static void DrawFrame(Frame* frame) {
 	vkWaitForFences(device.logical_device, 1, &frame->inflight_fence, true, -1);
 
-	// Use per-swapchain-image semaphores to avoid reuse conflicts.
-	// We cycle through them; by the time we wrap around, that image's presentation is complete.
-	VkSemaphore acquire_semaphore = image_available_semaphores[current_semaphore_index];
-	VkSemaphore render_semaphore = render_finished_semaphores[current_semaphore_index];
-	current_semaphore_index = (current_semaphore_index + 1) % swapchain_semaphore_count;
-
-	u32 image = swapchain.GetNextImageIndex(acquire_semaphore);
+	u32 image = swapchain.GetNextImageIndex(frame->image_available_semaphore);
 
 	vkResetFences(device.logical_device, 1, &frame->inflight_fence);
 	vkResetCommandBuffer(frame->command_buffer, 0);
 	RecordCommandBuffer(frame, image);
 
 	// Wait for an image before rendering colors.
-	VkSemaphore          wait_semaphores[] = { acquire_semaphore };
-	VkPipelineStageFlags wait_stages[]     = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT    };
+	VkSemaphore          wait_semaphores[] = { frame->image_available_semaphore };
+	VkPipelineStageFlags wait_stages[]     = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
 
 	// Semaphores to signal when we're done rendering the frame.
-	VkSemaphore signal_semaphores[] = { render_semaphore };
+	VkSemaphore signal_semaphores[] = { frame->render_finished_semaphore };
 
 	UpdateUbo(frame);
 
@@ -630,17 +628,8 @@ int main(int argc, char** argv) {
 	for (u32 i = 0; i < INFLIGHT_FRAME_COUNT; i++) {
 		frames[i].inflight_fence = device.CreateFence(true);
 		frames[i].command_buffer = command_buffers[i];
-	}
-
-	// Create enough semaphores to avoid reuse conflicts.
-	// Need (in_flight_frames + swapchain_images) to ensure we don't reuse a semaphore
-	// until its previous use has completed through both queue submit and presentation.
-	swapchain_semaphore_count = INFLIGHT_FRAME_COUNT + swapchain.images.count;
-	image_available_semaphores = (VkSemaphore*)AllocMemory(sizeof(VkSemaphore) * swapchain_semaphore_count);
-	render_finished_semaphores = (VkSemaphore*)AllocMemory(sizeof(VkSemaphore) * swapchain_semaphore_count);
-	for (u32 i = 0; i < swapchain_semaphore_count; i++) {
-		image_available_semaphores[i] = device.CreateSemaphore();
-		render_finished_semaphores[i] = device.CreateSemaphore();
+		frames[i].image_available_semaphore = device.CreateSemaphore();
+		frames[i].render_finished_semaphore = device.CreateSemaphore();
 	}
 
 	Print("Running...\n");
@@ -682,13 +671,6 @@ int main(int argc, char** argv) {
 
 	for (Frame& frame : frames)
 		frame.Destroy();
-
-	for (u32 i = 0; i < swapchain_semaphore_count; i++) {
-		vkDestroySemaphore(device.logical_device, image_available_semaphores[i], null);
-		vkDestroySemaphore(device.logical_device, render_finished_semaphores[i], null);
-	}
-	FreeMemory(image_available_semaphores, sizeof(VkSemaphore) * swapchain_semaphore_count);
-	FreeMemory(render_finished_semaphores, sizeof(VkSemaphore) * swapchain_semaphore_count);
 
 	vkDestroyDescriptorSetLayout(device.logical_device, descriptor_set_layout, null);
 	vkDestroyDescriptorPool(device.logical_device, descriptor_pool, null);
