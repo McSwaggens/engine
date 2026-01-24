@@ -67,7 +67,7 @@ struct GlobalAllocator {
 	}
 
 	u64 NormalizeSize(u64 size) {
-		return (size + (GA_MIN_SIZE-1)) & -GA_MIN_SIZE;
+		return RoundPow2((size + (GA_MIN_SIZE-1)) & -GA_MIN_SIZE);
 	}
 
 	void InsertSingle(u64 bit, u64 pool_index, byte* block) {
