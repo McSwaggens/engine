@@ -5,6 +5,18 @@
 
 #include "device.h"
 
+static VkFormat FindDepthFormat() {
+	VkFormat formats[] = { VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT };
+	for (VkFormat fmt : formats) {
+		VkFormatProperties props;
+		vkGetPhysicalDeviceFormatProperties(device.physical_device, fmt, &props);
+		if (props.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT)
+			return fmt;
+	}
+	Assert(false);
+	return VK_FORMAT_UNDEFINED;
+}
+
 void Swapchain::Init(Window* window) {
 	SwapchainSupportInfo swapchain_info = QuerySwapchainSupportInfo(device.physical_device, window->surface);
 	VkPresentModeKHR present_mode = swapchain_info.ChoosePresentMode();
@@ -39,6 +51,37 @@ void Swapchain::Init(Window* window) {
 
 	InitImages();
 	InitViews();
+
+	// Create depth buffer
+	depth_format = FindDepthFormat();
+
+	VkImageCreateInfo depth_image_info = {
+		.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+		.imageType = VK_IMAGE_TYPE_2D,
+		.format = depth_format,
+		.extent = { extent.width, extent.height, 1 },
+		.mipLevels = 1,
+		.arrayLayers = 1,
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		.tiling = VK_IMAGE_TILING_OPTIMAL,
+		.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+	};
+	vkCreateImage(device.logical_device, &depth_image_info, null, &depth_image);
+
+	VkMemoryRequirements memreq;
+	vkGetImageMemoryRequirements(device.logical_device, depth_image, &memreq);
+	depth_memory = device.AllocateMemory(memreq.size, device.FindMemoryType(memreq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT));
+	vkBindImageMemory(device.logical_device, depth_image, depth_memory, 0);
+
+	VkImageViewCreateInfo depth_view_info = {
+		.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+		.image = depth_image,
+		.viewType = VK_IMAGE_VIEW_TYPE_2D,
+		.format = depth_format,
+		.subresourceRange = { VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 },
+	};
+	vkCreateImageView(device.logical_device, &depth_view_info, null, &depth_view);
+
 	swapchain_info.Free();
 }
 
@@ -91,6 +134,7 @@ void Swapchain::InitFrameBuffers(VkRenderPass renderpass) {
 	for (u32 i = 0; i < images.count; i++) {
 		VkImageView attachments[] = {
 			views[i],
+			depth_view,
 		};
 
 		VkFramebufferCreateInfo framebuffer_info = {
@@ -98,7 +142,7 @@ void Swapchain::InitFrameBuffers(VkRenderPass renderpass) {
 			.renderPass = renderpass,
 
 			.pAttachments = attachments,
-			.attachmentCount = 1,
+			.attachmentCount = 2,
 
 			.width  = extent.width,
 			.height = extent.height,
@@ -127,6 +171,10 @@ Optional<u32> Swapchain::GetNextImageIndex(VkSemaphore image_available) {
 }
 
 void Swapchain::Destroy() {
+	vkDestroyImageView(device.logical_device, depth_view, null);
+	vkDestroyImage(device.logical_device, depth_image, null);
+	vkFreeMemory(device.logical_device, depth_memory, null);
+
 	vkDestroySwapchainKHR(device.logical_device, handle, null); // Destroys images.
 	images.Reset();
 

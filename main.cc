@@ -74,7 +74,7 @@ static u32 swapchain_image_count = 0;
 static Frame frames[INFLIGHT_FRAME_COUNT] = { };
 
 struct Vertex {
-	Vector2 position;
+	Vector3 position;
 	Vector3 color;
 };
 
@@ -116,23 +116,46 @@ static VkShaderModule LoadShader(String path) {
 }
 
 static void InitVertexBuffer() {
-	Vertex vertices[8] = {
-		// First rectangle
-		{ .position = {  0.5, -0.5 }, .color = { 1, 0, 0 } },
-		{ .position = {  0.5,  0.5 }, .color = { 0, 1, 0 } },
-		{ .position = { -0.5,  0.5 }, .color = { 0, 0, 1 } },
-		{ .position = { -0.5, -0.5 }, .color = { 1, 1, 0 } },
-		// Second rectangle
-		{ .position = {  1.5,  0.0 }, .color = { 1, 0, 1 } },
-		{ .position = {  1.5,  1.0 }, .color = { 0, 1, 1 } },
-		{ .position = {  0.5,  1.0 }, .color = { 1, 1, 1 } },
-		{ .position = {  0.5,  0.0 }, .color = { 0.5, 0.5, 0 } },
+	Vertex vertices[24] = {
+		// Front face (red)
+		{ .position = { -0.5f, -0.5f,  0.5f }, .color = { 1, 0, 0 } },
+		{ .position = {  0.5f, -0.5f,  0.5f }, .color = { 1, 0, 0 } },
+		{ .position = {  0.5f,  0.5f,  0.5f }, .color = { 1, 0, 0 } },
+		{ .position = { -0.5f,  0.5f,  0.5f }, .color = { 1, 0, 0 } },
+		// Back face (green)
+		{ .position = {  0.5f, -0.5f, -0.5f }, .color = { 0, 1, 0 } },
+		{ .position = { -0.5f, -0.5f, -0.5f }, .color = { 0, 1, 0 } },
+		{ .position = { -0.5f,  0.5f, -0.5f }, .color = { 0, 1, 0 } },
+		{ .position = {  0.5f,  0.5f, -0.5f }, .color = { 0, 1, 0 } },
+		// Top face (blue)
+		{ .position = { -0.5f,  0.5f,  0.5f }, .color = { 0, 0, 1 } },
+		{ .position = {  0.5f,  0.5f,  0.5f }, .color = { 0, 0, 1 } },
+		{ .position = {  0.5f,  0.5f, -0.5f }, .color = { 0, 0, 1 } },
+		{ .position = { -0.5f,  0.5f, -0.5f }, .color = { 0, 0, 1 } },
+		// Bottom face (yellow)
+		{ .position = { -0.5f, -0.5f, -0.5f }, .color = { 1, 1, 0 } },
+		{ .position = {  0.5f, -0.5f, -0.5f }, .color = { 1, 1, 0 } },
+		{ .position = {  0.5f, -0.5f,  0.5f }, .color = { 1, 1, 0 } },
+		{ .position = { -0.5f, -0.5f,  0.5f }, .color = { 1, 1, 0 } },
+		// Right face (magenta)
+		{ .position = {  0.5f, -0.5f,  0.5f }, .color = { 1, 0, 1 } },
+		{ .position = {  0.5f, -0.5f, -0.5f }, .color = { 1, 0, 1 } },
+		{ .position = {  0.5f,  0.5f, -0.5f }, .color = { 1, 0, 1 } },
+		{ .position = {  0.5f,  0.5f,  0.5f }, .color = { 1, 0, 1 } },
+		// Left face (cyan)
+		{ .position = { -0.5f, -0.5f, -0.5f }, .color = { 0, 1, 1 } },
+		{ .position = { -0.5f, -0.5f,  0.5f }, .color = { 0, 1, 1 } },
+		{ .position = { -0.5f,  0.5f,  0.5f }, .color = { 0, 1, 1 } },
+		{ .position = { -0.5f,  0.5f, -0.5f }, .color = { 0, 1, 1 } },
 	};
 
-	u16 indices[11] = {
-		0, 1, 2, 3, 0,
-		0xFFFF, // Primitive restart
-		4, 5, 6, 7, 4
+	u16 indices[36] = {
+		0,  1,  2,   2,  3,  0,   // Front
+		4,  5,  6,   6,  7,  4,   // Back
+		8,  9,  10,  10, 11, 8,   // Top
+		12, 13, 14,  14, 15, 12,  // Bottom
+		16, 17, 18,  18, 19, 16,  // Right
+		20, 21, 22,  22, 23, 20,  // Left
 	};
 
 	GpuBuffer staging_buffer;
@@ -150,51 +173,69 @@ static void InitVertexBuffer() {
 }
 
 static void CreateRenderPass() {
-	// Make this an array?
-	VkAttachmentDescription color_attachment = {
-		.format  = swapchain.surface_format.format,
-		.samples = VK_SAMPLE_COUNT_1_BIT,
+	VkAttachmentDescription attachments[2] = {
+		{
+			.format  = swapchain.surface_format.format,
+			.samples = VK_SAMPLE_COUNT_1_BIT,
 
-		.loadOp  = VK_ATTACHMENT_LOAD_OP_CLEAR,
-		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+			.loadOp  = VK_ATTACHMENT_LOAD_OP_CLEAR,
+			.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
 
-		.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+			.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+			.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
 
-		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-		.finalLayout   = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+			.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+			.finalLayout   = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+		},
+		{
+			.format  = swapchain.depth_format,
+			.samples = VK_SAMPLE_COUNT_1_BIT,
+
+			.loadOp  = VK_ATTACHMENT_LOAD_OP_CLEAR,
+			.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+
+			.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+			.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+
+			.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+			.finalLayout   = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+		},
 	};
 
-	// Make this an array?
 	VkAttachmentReference color_attachment_ref = {
 		.attachment = 0,
 		.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 	};
 
-	// Make this an array?
+	VkAttachmentReference depth_attachment_ref = {
+		.attachment = 1,
+		.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+	};
+
 	VkSubpassDescription subpass = {
 		.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
 
 		.pColorAttachments = &color_attachment_ref,
 		.colorAttachmentCount = 1,
+		.pDepthStencilAttachment = &depth_attachment_ref,
 	};
 
 	VkSubpassDependency dependency = {
-		.srcSubpass = VK_SUBPASS_EXTERNAL, // Implicit subpass
-		.dstSubpass = 0, // Our subpass index.
+		.srcSubpass = VK_SUBPASS_EXTERNAL,
+		.dstSubpass = 0,
 
-		.srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, // Wait for swapchain to finish reading colors.
+		.srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
 		.srcAccessMask = 0,
 
-		.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-		.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+		.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
+		.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
 	};
 
 	VkRenderPassCreateInfo renderpass_info = {
 		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
 
-		.pAttachments    = &color_attachment,
-		.attachmentCount = 1,
+		.pAttachments    = attachments,
+		.attachmentCount = 2,
 
 		.pSubpasses   = &subpass,
 		.subpassCount = 1,
@@ -250,7 +291,7 @@ static void CreateGraphicsPipeline() {
 		{
 			.binding = 0,
 			.location = 0,
-			.format = VK_FORMAT_R32G32_SFLOAT,
+			.format = VK_FORMAT_R32G32B32_SFLOAT,
 			.offset = offsetof(Vertex, position),
 		},
 		{
@@ -275,8 +316,8 @@ static void CreateGraphicsPipeline() {
 	// Input Assembly
 	VkPipelineInputAssemblyStateCreateInfo input_assembly_state_info = {
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-		.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP,
-		.primitiveRestartEnable = true, // CANNOT DISABLE ON MACOS.
+		.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+		.primitiveRestartEnable = true,
 	};
 
 	// Viewport
@@ -307,7 +348,7 @@ static void CreateGraphicsPipeline() {
 		.polygonMode = VK_POLYGON_MODE_FILL,
 		.lineWidth = 1.0,
 		.cullMode = VK_CULL_MODE_BACK_BIT,
-		.frontFace = VK_FRONT_FACE_CLOCKWISE,
+		.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
 
 		.depthBiasEnable         = false,
 		.depthBiasConstantFactor = 0.0,
@@ -325,6 +366,16 @@ static void CreateGraphicsPipeline() {
 		.pSampleMask = null,
 		.alphaToCoverageEnable = false,
 		.alphaToOneEnable = false,
+	};
+
+	// Depth stencil
+	VkPipelineDepthStencilStateCreateInfo depth_stencil_info = {
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+		.depthTestEnable = true,
+		.depthWriteEnable = true,
+		.depthCompareOp = VK_COMPARE_OP_LESS,
+		.depthBoundsTestEnable = false,
+		.stencilTestEnable = false,
 	};
 
 	// Color blending
@@ -381,7 +432,7 @@ static void CreateGraphicsPipeline() {
 		.pViewportState      = &viewport_state,
 		.pRasterizationState = &rasterizer_info,
 		.pMultisampleState   = &multisampling_info,
-		.pDepthStencilState  = null,
+		.pDepthStencilState  = &depth_stencil_info,
 		.pColorBlendState    = &color_blend_info,
 		.pDynamicState       = &dynamic_state_info,
 
@@ -401,8 +452,9 @@ static void CreateGraphicsPipeline() {
 static void RecordCommandBuffer(Frame* frame, u32 image_index) {
 	frame->command_buffer.Begin();
 
-	VkClearValue clear_color = {
-		.color = { .float32 = { 0.0, 0.0, 0.0, 1.0 } },
+	VkClearValue clear_values[2] = {
+		{ .color = { .float32 = { 0.0, 0.0, 0.0, 1.0 } } },
+		{ .depthStencil = { 1.0f, 0 } },
 	};
 
 	VkRenderPassBeginInfo renderpass_begin_info = {
@@ -415,8 +467,8 @@ static void RecordCommandBuffer(Frame* frame, u32 image_index) {
 			.extent = swapchain.extent,
 		},
 
-		.pClearValues    = &clear_color,
-		.clearValueCount = 1,
+		.pClearValues    = clear_values,
+		.clearValueCount = 2,
 	};
 
 	VkDeviceSize offsets[1] = { 0 };
@@ -428,7 +480,7 @@ static void RecordCommandBuffer(Frame* frame, u32 image_index) {
 	frame->command_buffer.BindVertexBuffers(&vertex_buffer.buffer, offsets);
 	frame->command_buffer.BindIndexBuffer(index_buffer.buffer, 0, VK_INDEX_TYPE_UINT16);
 	frame->command_buffer.BindDescriptorSets(VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &frame->uniform_descriptor_set);
-	frame->command_buffer.DrawIndexed(11, 1, 0, 0, 0);
+	frame->command_buffer.DrawIndexed(36, 1, 0, 0, 0);
 	frame->command_buffer.EndRenderPass();
 
 	frame->command_buffer.End();
@@ -519,14 +571,16 @@ static void UpdateUbo(Frame* frame) {
 	GpuBuffer* buffer = &frame->uniform_buffer;
 	Ubo* ubo = (Ubo*)buffer->Map();
 
+	f32 aspect = (f32)swapchain.extent.width / (f32)swapchain.extent.height;
+	f32 angle = (f32)current_time;
+
+	Matrix4 model = Matrix4::RotateY(angle) * Matrix4::RotateX(angle * 0.5f);
+	Matrix4 view = Matrix4::LookAt(Vector3(0, 0, 3), Vector3(0, 0, 0), Vector3(0, 1, 0));
+	Matrix4 proj = Matrix4::Perspective(90.0 / 360.0 * Math::TAU , aspect, 0.1f, 100.0f);
+
 	*ubo = {
 		.time = (f32)current_time,
-		.mvp  = Matrix4(
-			1, 0, 0, 0,
-			0, 1, 0, 0,
-			0, 0, 1, 0,
-			0, 0, 0, 1
-		),
+		.mvp  = proj * view * model,
 	};
 
 	buffer->Unmap();

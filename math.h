@@ -3,6 +3,11 @@
 
 #include "general.h"
 
+namespace Math {
+	static constexpr double PI  = 3.14159265358979311599796346854;
+	static constexpr double TAU = 6.28318530717958647692528676655;
+}
+
 static f32 Fma(f32 a, f32 b, f32 c) { return __builtin_fma(a, b, c);   }
 static f32 Abs(f32 f)               { return __builtin_fabs(f);        }
 static f32 Ceil(f32 f)              { return __builtin_ceil(f);        }

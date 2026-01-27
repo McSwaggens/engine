@@ -42,6 +42,7 @@ struct Vector3 {
 
 	f32 Dot(Vector3 v) { return x*v.x + y*v.y + z*v.z; }
 	f32 Length() { return Sqrt(x*x + y*y + z*z); }
+	Vector3 Normal() { return *this / Vector3(Length()); }
 
 	Vector3 operator +(Vector3 v) { return Vector3(x + v.x, y + v.y, z + v.z); }
 	Vector3 operator -(Vector3 v) { return Vector3(x - v.x, y - v.y, z - v.z); }
@@ -83,5 +84,13 @@ struct Vector4 {
 static f32 Dot(Vector2 a, Vector2 b) { return a.Dot(b); }
 static f32 Dot(Vector3 a, Vector3 b) { return a.Dot(b); }
 static f32 Dot(Vector4 a, Vector4 b) { return a.Dot(b); }
+
+static Vector3 Cross(Vector3 a, Vector3 b) {
+	return Vector3(
+		a.y * b.z - a.z * b.y,
+		a.z * b.x - a.x * b.z,
+		a.x * b.y - a.y * b.x
+	);
+}
 
 #endif // VECTOR_H_INCLUDED

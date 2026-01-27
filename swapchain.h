@@ -18,6 +18,11 @@ struct Swapchain {
 
 	List<VkFramebuffer> framebuffers;
 
+	VkImage        depth_image;
+	VkDeviceMemory depth_memory;
+	VkImageView    depth_view;
+	VkFormat       depth_format;
+
 	void Init(Window* window);
 	void InitImages();
 	void InitViews();

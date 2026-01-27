@@ -28,11 +28,17 @@ void Device::Init(VkPhysicalDevice pdev, QueueFamilyTable qft) {
 	VkPhysicalDeviceFeatures features = {
 	};
 
+	VkPhysicalDevicePrimitiveTopologyListRestartFeaturesEXT primitive_restart_features = {
+		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRIMITIVE_TOPOLOGY_LIST_RESTART_FEATURES_EXT,
+		.primitiveTopologyListRestart = true,
+	};
+
 	enabled_extensions.Add(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
 	if (MACOS) enabled_extensions.Add("VK_KHR_portability_subset");
 
 	VkDeviceCreateInfo device_create_info = {
 		.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+		.pNext = &primitive_restart_features,
 
 		.pQueueCreateInfos = &queue_create_info,
 		.queueCreateInfoCount = 1,
