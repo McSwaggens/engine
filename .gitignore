@@ -1,7 +1,8 @@
+.*/
+*.dSYM/
 .kakrc
 program
 *.o
 tags
-*.dSYM/
 *.spv
 .kak*
