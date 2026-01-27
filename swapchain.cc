@@ -118,9 +118,11 @@ void Swapchain::Reload(Window* window, VkRenderPass renderpass) {
 	InitFrameBuffers(renderpass);
 }
 
-u32 Swapchain::GetNextImageIndex(VkSemaphore image_available) {
+Optional<u32> Swapchain::GetNextImageIndex(VkSemaphore image_available) {
 	u32 index;
-	vkAcquireNextImageKHR(device.logical_device, handle, -1, image_available, VK_NULL_HANDLE, &index);
+	VkResult result = vkAcquireNextImageKHR(device.logical_device, handle, -1, image_available, VK_NULL_HANDLE, &index);
+	if (result == VK_ERROR_OUT_OF_DATE_KHR)
+		return OptNone;
 	return index;
 }
 

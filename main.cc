@@ -38,7 +38,6 @@ static VkShaderModule frag;
 static VkRenderPass renderpass;
 static VkPipelineLayout pipeline_layout;
 static VkPipeline pipeline;
-static GpuBuffer staging_buffer;
 static GpuBuffer vertex_buffer;
 static GpuBuffer index_buffer;
 static VkDescriptorSetLayout descriptor_set_layout;
@@ -52,22 +51,25 @@ struct Ubo {
 };
 
 struct Frame {
-	VkCommandBuffer command_buffer;
+	CommandBuffer   command_buffer;
 	VkFence         inflight_fence;
 	GpuBuffer       uniform_buffer;
 	VkDescriptorSet uniform_descriptor_set;
 
 	void Destroy() {
+		command_buffer.Destroy();
 		vkDestroyFence(device.logical_device, inflight_fence, null);
 		uniform_buffer.Destroy();
 	}
 };
 
-// Semaphores are per-swapchain-image, not per-frame, to avoid reuse conflicts.
-// See: https://docs.vulkan.org/guide/latest/swapchain_semaphore_reuse.html
-static VkSemaphore* image_available_semaphores = null;
+// Per-swapchain-image semaphores - indexed by acquired image index.
+// This ensures a semaphore is only reused when the same image is re-acquired,
+// which means the previous present of that image has completed.
+static VkSemaphore* image_acquired_semaphores = null;
 static VkSemaphore* render_finished_semaphores = null;
-static u32 swapchain_semaphore_count = 0;
+static u32 swapchain_image_count = 0;
+
 
 static Frame frames[INFLIGHT_FRAME_COUNT] = { };
 
@@ -133,6 +135,7 @@ static void InitVertexBuffer() {
 		4, 5, 6, 7, 4
 	};
 
+	GpuBuffer staging_buffer;
 	staging_buffer = CreateBuffer(Max((u64)sizeof(vertices), (u64)sizeof(indices)), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 	vertex_buffer  = CreateBuffer(sizeof(vertices), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 	index_buffer   = CreateBuffer(sizeof(indices),  VK_BUFFER_USAGE_INDEX_BUFFER_BIT  | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
@@ -142,6 +145,8 @@ static void InitVertexBuffer() {
 
 	staging_buffer.Upload(indices, sizeof(indices));
 	CopyBuffer(index_buffer, staging_buffer, sizeof(indices));
+
+	staging_buffer.Destroy();
 }
 
 static void CreateRenderPass() {
@@ -394,14 +399,7 @@ static void CreateGraphicsPipeline() {
 }
 
 static void RecordCommandBuffer(Frame* frame, u32 image_index) {
-	VkCommandBufferBeginInfo begin_info = {
-		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-		.flags = 0,
-		.pInheritanceInfo = null,
-	};
-
-	VkResult vk_result = vkBeginCommandBuffer(frame->command_buffer, &begin_info);
-	Assert(vk_result == VK_SUCCESS);
+	frame->command_buffer.Begin();
 
 	VkClearValue clear_color = {
 		.color = { .float32 = { 0.0, 0.0, 0.0, 1.0 } },
@@ -421,33 +419,19 @@ static void RecordCommandBuffer(Frame* frame, u32 image_index) {
 		.clearValueCount = 1,
 	};
 
-	VkViewport viewport = {
-		.x = 0.0, .y = 0.0,
-		.width  = (f32)swapchain.extent.width,
-		.height = (f32)swapchain.extent.height,
-		.minDepth = 0.0,
-		.maxDepth = 1.0,
-	};
-
-	VkRect2D scissor = {
-		.offset = { 0, 0 },
-		.extent = swapchain.extent,
-	};
-
 	VkDeviceSize offsets[1] = { 0 };
 
-	vkCmdBeginRenderPass(frame->command_buffer, &renderpass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
-	vkCmdBindPipeline(frame->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
-	vkCmdSetViewport(frame->command_buffer, 0, 1, &viewport);
-	vkCmdSetScissor(frame->command_buffer,  0, 1, &scissor);
-	vkCmdBindVertexBuffers(frame->command_buffer, 0, 1, &vertex_buffer.buffer, offsets);
-	vkCmdBindIndexBuffer(frame->command_buffer, index_buffer.buffer, 0, VK_INDEX_TYPE_UINT16);
-	vkCmdBindDescriptorSets(frame->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &frame->uniform_descriptor_set, 0, null);
-	vkCmdDrawIndexed(frame->command_buffer, 11, 1, 0, 0, 0);
-	vkCmdEndRenderPass(frame->command_buffer);
+	frame->command_buffer.BeginRenderPass(&renderpass_begin_info);
+	frame->command_buffer.BindPipeline(VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+	frame->command_buffer.SetViewport(Vector2(0.0f), Vector2((f32)swapchain.extent.width, (f32)swapchain.extent.height), Vector2(0.0f, 1.0f));
+	frame->command_buffer.SetScissor(Vector2(0.0f), Vector2((f32)swapchain.extent.width, (f32)swapchain.extent.height));
+	frame->command_buffer.BindVertexBuffers(&vertex_buffer.buffer, offsets);
+	frame->command_buffer.BindIndexBuffer(index_buffer.buffer, 0, VK_INDEX_TYPE_UINT16);
+	frame->command_buffer.BindDescriptorSets(VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &frame->uniform_descriptor_set);
+	frame->command_buffer.DrawIndexed(11, 1, 0, 0, 0);
+	frame->command_buffer.EndRenderPass();
 
-	vk_result = vkEndCommandBuffer(frame->command_buffer);
-	Assert(vk_result == VK_SUCCESS);
+	frame->command_buffer.End();
 }
 
 static void CreateDescriptorPool() {
@@ -548,29 +532,50 @@ static void UpdateUbo(Frame* frame) {
 	buffer->Unmap();
 }
 
-static u32 current_semaphore_index = 0;
+static void CreateImageSemaphores() {
+	swapchain_image_count = swapchain.images.count;
+	image_acquired_semaphores = (VkSemaphore*)AllocMemory(sizeof(VkSemaphore) * swapchain_image_count);
+	render_finished_semaphores = (VkSemaphore*)AllocMemory(sizeof(VkSemaphore) * swapchain_image_count);
+	for (u32 i = 0; i < swapchain_image_count; i++) {
+		image_acquired_semaphores[i] = device.CreateSemaphore();
+		render_finished_semaphores[i] = device.CreateSemaphore();
+	}
+}
 
-static void DrawFrame(Frame* frame) {
+static void DestroyImageSemaphores() {
+	for (u32 i = 0; i < swapchain_image_count; i++) {
+		vkDestroySemaphore(device.logical_device, image_acquired_semaphores[i], null);
+		vkDestroySemaphore(device.logical_device, render_finished_semaphores[i], null);
+	}
+	FreeMemory(image_acquired_semaphores, sizeof(VkSemaphore) * swapchain_image_count);
+	FreeMemory(render_finished_semaphores, sizeof(VkSemaphore) * swapchain_image_count);
+}
+
+static void RecreateSwapchain() {
+	device.WaitIdle();
+	DestroyImageSemaphores();
+	swapchain.Reload(&window, renderpass);
+	CreateImageSemaphores();
+}
+
+// Returns true if swapchain needs recreation
+static bool DrawFrame(Frame* frame) {
 	vkWaitForFences(device.logical_device, 1, &frame->inflight_fence, true, -1);
 
-	// Use per-swapchain-image semaphores to avoid reuse conflicts.
-	// We cycle through them; by the time we wrap around, that image's presentation is complete.
-	VkSemaphore acquire_semaphore = image_available_semaphores[current_semaphore_index];
-	VkSemaphore render_semaphore = render_finished_semaphores[current_semaphore_index];
-	current_semaphore_index = (current_semaphore_index + 1) % swapchain_semaphore_count;
-
-	u32 image = swapchain.GetNextImageIndex(acquire_semaphore);
+	// Use the per-image semaphores - when we acquire image N, semaphore N is safe
+	// because the previous present of image N has completed (that's why it's available)
+	Optional<u32> image = swapchain.GetNextImageIndex(image_acquired_semaphores[frame_counter % swapchain_image_count]);
+	if (!image)
+		return true;
 
 	vkResetFences(device.logical_device, 1, &frame->inflight_fence);
-	vkResetCommandBuffer(frame->command_buffer, 0);
-	RecordCommandBuffer(frame, image);
+	frame->command_buffer.Reset();
+	RecordCommandBuffer(frame, image.Get());
 
-	// Wait for an image before rendering colors.
-	VkSemaphore          wait_semaphores[] = { acquire_semaphore };
-	VkPipelineStageFlags wait_stages[]     = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
-
-	// Semaphores to signal when we're done rendering the frame.
-	VkSemaphore signal_semaphores[] = { render_semaphore };
+	// Use image index for both semaphores - ensures we don't reuse until same image is re-acquired
+	VkSemaphore          wait_semaphores[]   = { image_acquired_semaphores[frame_counter % swapchain_image_count] };
+	VkPipelineStageFlags wait_stages[]       = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+	VkSemaphore          signal_semaphores[] = { render_finished_semaphores[image.Get()] };
 
 	UpdateUbo(frame);
 
@@ -579,10 +584,8 @@ static void DrawFrame(Frame* frame) {
 		.waitSemaphoreCount = 1,
 		.pWaitSemaphores = wait_semaphores,
 		.pWaitDstStageMask = wait_stages,
-
-		.pCommandBuffers = &frame->command_buffer,
+		.pCommandBuffers = &frame->command_buffer.handle,
 		.commandBufferCount = 1,
-
 		.signalSemaphoreCount = 1,
 		.pSignalSemaphores = signal_semaphores,
 	};
@@ -596,11 +599,31 @@ static void DrawFrame(Frame* frame) {
 		.pWaitSemaphores = signal_semaphores,
 		.swapchainCount = 1,
 		.pSwapchains = &swapchain.handle,
-		.pImageIndices = &image,
+		.pImageIndices = &image.Get(),
 		.pResults = null,
 	};
 
 	vk_result = vkQueuePresentKHR(device.general_queue->vk, &present_info);
+	if (vk_result == VK_ERROR_OUT_OF_DATE_KHR || vk_result == VK_SUBOPTIMAL_KHR)
+		return true;
+
+	return false;
+}
+
+f64 last_frame_time = current_time;
+f64 last_second_time = current_time;
+u64 last_second_frame_counter = 0;
+
+static void PrintFps() {
+	if (current_time - last_second_time >= 1.0) {
+		last_second_time = current_time;
+
+		fps = frame_counter - last_second_frame_counter;
+		last_second_frame_counter = frame_counter;
+
+		LogVar(fps);
+	}
+
 }
 
 int main(int argc, char** argv) {
@@ -633,31 +656,16 @@ int main(int argc, char** argv) {
 
 	swapchain.InitFrameBuffers(renderpass);
 
-	VkCommandBuffer command_buffers[INFLIGHT_FRAME_COUNT];
-	device.CreateCommandBuffers(command_buffers, INFLIGHT_FRAME_COUNT);
 	for (u32 i = 0; i < INFLIGHT_FRAME_COUNT; i++) {
 		frames[i].inflight_fence = device.CreateFence(true);
-		frames[i].command_buffer = command_buffers[i];
+		frames[i].command_buffer = device.CreateCommandBuffer();
 	}
 
-	// Create enough semaphores to avoid reuse conflicts.
-	// Need (in_flight_frames + swapchain_images) to ensure we don't reuse a semaphore
-	// until its previous use has completed through both queue submit and presentation.
-	swapchain_semaphore_count = INFLIGHT_FRAME_COUNT + swapchain.images.count;
-	image_available_semaphores = (VkSemaphore*)AllocMemory(sizeof(VkSemaphore) * swapchain_semaphore_count);
-	render_finished_semaphores = (VkSemaphore*)AllocMemory(sizeof(VkSemaphore) * swapchain_semaphore_count);
-	for (u32 i = 0; i < swapchain_semaphore_count; i++) {
-		image_available_semaphores[i] = device.CreateSemaphore();
-		render_finished_semaphores[i] = device.CreateSemaphore();
-	}
+	CreateImageSemaphores();
 
 	Print("Running...\n");
 
 	UpdateTime();
-
-	f64 last_frame_time = current_time;
-	f64 last_second_time = current_time;
-	u64 last_second_frame_counter = 0;
 
 	while (!window.ShouldClose()) {
 		Frame* frame = &frames[frame_counter % INFLIGHT_FRAME_COUNT];
@@ -665,19 +673,19 @@ int main(int argc, char** argv) {
 		UpdateTime();
 		window.Update();
 
+		// Skip frames when window is minimized or has zero size
+		if (window.width == 0 || window.height == 0)
+			continue;
+
 		if (window.has_size_changed)
-			swapchain.Reload(&window, renderpass);
+			RecreateSwapchain();
 
-		if (current_time - last_second_time >= 1.0) {
-			last_second_time = current_time;
+		PrintFps();
 
-			fps = frame_counter - last_second_frame_counter;
-			last_second_frame_counter = frame_counter;
-
-			LogVar(fps);
+		if (DrawFrame(frame)) {
+			RecreateSwapchain();
+			continue;
 		}
-
-		DrawFrame(frame);
 
 		frame_counter++;
 		last_frame_time = current_time;
@@ -691,19 +699,13 @@ int main(int argc, char** argv) {
 	for (Frame& frame : frames)
 		frame.Destroy();
 
-	for (u32 i = 0; i < swapchain_semaphore_count; i++) {
-		vkDestroySemaphore(device.logical_device, image_available_semaphores[i], null);
-		vkDestroySemaphore(device.logical_device, render_finished_semaphores[i], null);
-	}
-	FreeMemory(image_available_semaphores, sizeof(VkSemaphore) * swapchain_semaphore_count);
-	FreeMemory(render_finished_semaphores, sizeof(VkSemaphore) * swapchain_semaphore_count);
+	DestroyImageSemaphores();
 
 	vkDestroyDescriptorSetLayout(device.logical_device, descriptor_set_layout, null);
 	vkDestroyDescriptorPool(device.logical_device, descriptor_pool, null);
 
 	index_buffer.Destroy();
 	vertex_buffer.Destroy();
-	staging_buffer.Destroy();
 
 	vkDestroyRenderPass(device.logical_device, renderpass, null);
 	vkDestroyPipelineLayout(device.logical_device, pipeline_layout, null);

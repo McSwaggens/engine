@@ -3,6 +3,7 @@
 
 #include "general.h"
 #include "list.h"
+#include "optional.h"
 #include "window.h"
 #include "vector.h"
 
@@ -24,7 +25,7 @@ struct Swapchain {
 
 	void Reload(Window* window, VkRenderPass renderpass);
 
-	u32 GetNextImageIndex(VkSemaphore image_available);
+	Optional<u32> GetNextImageIndex(VkSemaphore image_available);
 
 	void Destroy();
 };
