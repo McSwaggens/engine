@@ -5,11 +5,12 @@
 #include "math.h"
 
 struct Vector2 {
-	f32 x;
-	f32 y;
+	f32 x = 0;
+	f32 y = 0;
 
 	Vector2(f32 x, f32 y) : x(x), y(y) { }
 	Vector2(f32 f) : Vector2(f, f) { }
+	Vector2() = default;
 
 	f32 Dot(Vector2 v) { return x*v.x + y*v.y; }
 	f32 Length()       { return Sqrt(x*x + y*y); }
@@ -34,19 +35,21 @@ struct Vector2 {
 	Vector2& operator *=(f32 f) { x *= f; y *= f; return *this; }
 	Vector2& operator /=(f32 f) { x /= f; y /= f; return *this; }
 
+	Vector2 operator -() { return Vector2(-x, -y); }
+
 	Vector2 Normal() { return *this / Vector2(Length()); }
 	// Vector2 Cross(Vector2 v) { return Normal(); }
 };
 
 struct Vector3 {
-	f32 x;
-	f32 y;
-	f32 z;
+	f32 x = 0;
+	f32 y = 0;
+	f32 z = 0;
 
 	Vector3(f32 x, f32 y, f32 z) : x(x), y(y), z(z) { }
 	Vector3(Vector2 v, f32 z) : Vector3(v.x, v.y, z) { }
 	Vector3(f32 f) : Vector3(f, f, f) { }
-	Vector3() : Vector3(0, 0, 0) { }
+	Vector3() = default;
 
 	explicit operator Vector2() { return Vector2(x, y); }
 
@@ -78,13 +81,14 @@ struct Vector3 {
 };
 
 struct Vector4 {
-	f32 x;
-	f32 y;
-	f32 z;
-	f32 w;
+	f32 x = 0;
+	f32 y = 0;
+	f32 z = 0;
+	f32 w = 0;
 
-	Vector4(f32 x, f32 y, f32 z, f32 w)
-		: x(x), y(y), z(z), w(w) { }
+	Vector4(f32 x, f32 y, f32 z, f32 w) : x(x), y(y), z(z), w(w) { }
+	Vector4(Vector3 v3, f32 w) : x(v3.x), y(v3.y), z(v3.z), w(w) { }
+	Vector4() = default;
 
 	explicit operator Vector2() { return Vector2(x, y); }
 	explicit operator Vector3() { return Vector3(x, y, z); }
@@ -111,6 +115,8 @@ struct Vector4 {
 	Vector4& operator -=(f32 f) { x -= f; y -= f; z -= f; w -= f; return *this; }
 	Vector4& operator *=(f32 f) { x *= f; y *= f; z *= f; w *= f; return *this; }
 	Vector4& operator /=(f32 f) { x /= f; y /= f; z /= f; w /= f; return *this; }
+
+	Vector4 operator -() { return Vector4(-x, -y, -z, -w); }
 };
 
 static f32 Dot(Vector2 a, Vector2 b) { return a.Dot(b); }

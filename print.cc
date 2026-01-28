@@ -1,5 +1,7 @@
 #include "print.h"
 #include "assert.h"
+#include "vector.h"
+#include "quaternion.h"
 
 static void Write(OutputBuffer* buffer, char c) { buffer->Write(c); }
 static void Write(OutputBuffer* buffer, unsigned long int n) { Write(buffer, (u64)n); }
@@ -120,9 +122,50 @@ static void Write(OutputBuffer* buffer, f64 f) {
 	buffer->Write('.');
 	s64 frac = (s64)Abs((f-(s64)f) * Pow(10, 9));
 	// Pad with leading zeros (9 digits)
-	for (s64 threshold = 100000000; threshold > 1; threshold /= 10) {
+	for (s64 threshold = 100000000; threshold > 1; threshold /= 10)
 		if (frac < threshold) buffer->Write('0');
-	}
 	Write(buffer, frac);
+}
+
+static void Write(OutputBuffer* buffer, Vector2 v) {
+	buffer->Write('(');
+	Write(buffer, v.x);
+	buffer->Write(", ", 2);
+	Write(buffer, v.y);
+	buffer->Write(')');
+}
+
+static void Write(OutputBuffer* buffer, Vector3 v) {
+	buffer->Write('(');
+	Write(buffer, v.x);
+	buffer->Write(", ", 2);
+	Write(buffer, v.y);
+	buffer->Write(", ", 2);
+	Write(buffer, v.z);
+	buffer->Write(')');
+}
+
+static void Write(OutputBuffer* buffer, Vector4 v) {
+	buffer->Write('(');
+	Write(buffer, v.x);
+	buffer->Write(", ", 2);
+	Write(buffer, v.y);
+	buffer->Write(", ", 2);
+	Write(buffer, v.z);
+	buffer->Write(", ", 2);
+	Write(buffer, v.w);
+	buffer->Write(')');
+}
+
+static void Write(OutputBuffer* buffer, Quaternion q) {
+	buffer->Write('(');
+	Write(buffer, q.r);
+	buffer->Write(", ", 2);
+	Write(buffer, q.i);
+	buffer->Write("i, ", 3);
+	Write(buffer, q.j);
+	buffer->Write("j, ", 3);
+	Write(buffer, q.k);
+	buffer->Write("k)", 2);
 }
 

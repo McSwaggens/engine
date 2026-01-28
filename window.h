@@ -15,6 +15,7 @@ struct Window {
 	u32 height = 0;
 
 	bool has_size_changed = false;
+	bool is_focused = false;
 
 	void Destroy();
 	void Update();

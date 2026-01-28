@@ -34,6 +34,7 @@
 #include "command_buffer.h"
 #include "camera.h"
 #include "keyboard.h"
+#include "mouse.h"
 
 static Swapchain swapchain;
 static VkShaderModule vert;
@@ -587,11 +588,10 @@ static void UpdateUbo(Frame* frame) {
 
 	f32 angle = (f32)current_time;
 	Matrix4 model = Matrix4::RotateY(angle) * Matrix4::RotateX(angle * 0.5f);
-	Matrix4 vp = camera.GenerateVP(0.1f, 100.0f);
 
 	*ubo = {
 		.time = (f32)current_time,
-		.mvp  = vp * model,
+		.mvp  = camera.GenerateVP(0.1f, 100.0f) * model,
 	};
 
 	buffer->Unmap();
@@ -682,14 +682,16 @@ static void PrintFps() {
 		fps = frame_counter - last_second_frame_counter;
 		last_second_frame_counter = frame_counter;
 
-		LogVar(fps);
-		LogVar(delta_time);
+		Log(fps);
+		Log(delta_time);
 	}
 }
 
 static void Update() {
-	Vector3 translation;
-	f32 speed = 1;
+	PrintFps();
+
+	Vector3 translation = 0;
+	f32 speed = 5;
 
 	if (Keyboard::IsDown(Key::LeftShift)) speed *= 2;
 	if (Keyboard::IsDown(Key::D))     translation.x += 1;
@@ -698,6 +700,11 @@ static void Update() {
 	if (Keyboard::IsDown(Key::S))     translation.z -= 1;
 	if (Keyboard::IsDown(Key::Space)) translation.y += 1;
 	if (Keyboard::IsDown(Key::Z))     translation.y -= 1;
+
+	if (Mouse::movement.Length() != 0)
+		Log(Mouse::movement);
+
+	Mouse::SetLocked(Engine::window.is_focused);
 
 	camera.Translate(translation * speed * delta_time);
 }
@@ -710,6 +717,7 @@ int main(int argc, char** argv) {
 	InitTime();
 	InitWindowSystem();
 	Engine::window = CreateWindow();
+	Mouse::Init();
 	vk_helper.Init();
 	Engine::window.InitSurface();
 
@@ -750,6 +758,7 @@ int main(int argc, char** argv) {
 		Engine::window.Update();
 
 		Keyboard::Update();
+		Mouse::Update();
 
 		// Skip frames when Engine::window is minimized or has zero size
 		if (Engine::window.width == 0 || Engine::window.height == 0)
@@ -757,8 +766,6 @@ int main(int argc, char** argv) {
 
 		if (Engine::window.has_size_changed)
 			RecreateSwapchain();
-
-		PrintFps();
 
 		camera.aspect_ratio = (f32)swapchain.extent.width / (f32)swapchain.extent.height;
 

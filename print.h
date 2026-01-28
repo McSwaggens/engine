@@ -5,7 +5,7 @@
 #include "file_system.h"
 #include "string.h"
 
-#define LogVar(var) Print("%:%: note: " #var " = %\n", CString(__FILE__), __LINE__, var)
+#define Log(var) Print("%:%: note: " #var " = %\n", CString(__FILE__), __LINE__, var)
 
 struct OutputBuffer;
 
@@ -32,6 +32,11 @@ static void Write(OutputBuffer* buffer, unsigned long int n); // Need this, othe
 static void Write(OutputBuffer* buffer, void* p);
 static void Write(OutputBuffer* buffer, String str);
 
+static void Write(OutputBuffer* buffer, struct Vector2 v);
+static void Write(OutputBuffer* buffer, struct Vector3 v);
+static void Write(OutputBuffer* buffer, struct Vector4 v);
+static void Write(OutputBuffer* buffer, struct Quaternion q);
+
 // Need these for disambiguation.
 static void Write(OutputBuffer* buffer, u8  n) { Write(buffer, (u64)n); }
 static void Write(OutputBuffer* buffer, u16 n) { Write(buffer, (u64)n); }
@@ -51,11 +56,6 @@ static void Write(OutputBuffer* buffer, Array<T> array) {
 
 	buffer->Write(" }", 2);
 }
-
-// template<typename T>
-// static void Write(OutputBuffer* buffer, List<T> list) {
-// 	Write(buffer, Array<T>(list.elements, list.length);
-// }
 
 template<typename ...Args>
 static void Print(OutputBuffer* buffer, String format, Args&&... args) {

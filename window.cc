@@ -35,6 +35,7 @@ void Window::UpdateSize() {
 void Window::Update() {
 	glfwPollEvents();
 	UpdateSize();
+	is_focused = glfwGetWindowAttrib(glfw_window, GLFW_FOCUSED);
 }
 
 bool Window::InitSurface() {
