@@ -24,6 +24,16 @@ struct Vector2 {
 	Vector2 operator *(f32 f) { return Vector2(x * f, y * f); }
 	Vector2 operator /(f32 f) { return Vector2(x / f, y / f); }
 
+	Vector2& operator +=(Vector2 v) { x += v.x; y += v.y; return *this; }
+	Vector2& operator -=(Vector2 v) { x -= v.x; y -= v.y; return *this; }
+	Vector2& operator *=(Vector2 v) { x *= v.x; y *= v.y; return *this; }
+	Vector2& operator /=(Vector2 v) { x /= v.x; y /= v.y; return *this; }
+
+	Vector2& operator +=(f32 f) { x += f; y += f; return *this; }
+	Vector2& operator -=(f32 f) { x -= f; y -= f; return *this; }
+	Vector2& operator *=(f32 f) { x *= f; y *= f; return *this; }
+	Vector2& operator /=(f32 f) { x /= f; y /= f; return *this; }
+
 	Vector2 Normal() { return *this / Vector2(Length()); }
 	// Vector2 Cross(Vector2 v) { return Normal(); }
 };
@@ -53,6 +63,18 @@ struct Vector3 {
 	Vector3 operator -(f32 f) { return Vector3(x - f, y - f, z - f); }
 	Vector3 operator *(f32 f) { return Vector3(x * f, y * f, z * f); }
 	Vector3 operator /(f32 f) { return Vector3(x / f, y / f, z / f); }
+
+	Vector3& operator +=(Vector3 v) { x += v.x; y += v.y; z += v.z; return *this; }
+	Vector3& operator -=(Vector3 v) { x -= v.x; y -= v.y; z -= v.z; return *this; }
+	Vector3& operator *=(Vector3 v) { x *= v.x; y *= v.y; z *= v.z; return *this; }
+	Vector3& operator /=(Vector3 v) { x /= v.x; y /= v.y; z /= v.z; return *this; }
+
+	Vector3& operator +=(f32 f) { x += f; y += f; z += f; return *this; }
+	Vector3& operator -=(f32 f) { x -= f; y -= f; z -= f; return *this; }
+	Vector3& operator *=(f32 f) { x *= f; y *= f; z *= f; return *this; }
+	Vector3& operator /=(f32 f) { x /= f; y /= f; z /= f; return *this; }
+
+	Vector3 operator -() { return Vector3(-x, -y, -z); }
 };
 
 struct Vector4 {
@@ -79,6 +101,16 @@ struct Vector4 {
 	Vector4 operator -(f32 f) { return Vector4(x - f, y - f, z - f, w - f); }
 	Vector4 operator *(f32 f) { return Vector4(x * f, y * f, z * f, w * f); }
 	Vector4 operator /(f32 f) { return Vector4(x / f, y / f, z / f, w / f); }
+
+	Vector4& operator +=(Vector4 v) { x += v.x; y += v.y; z += v.z; w += v.w; return *this; }
+	Vector4& operator -=(Vector4 v) { x -= v.x; y -= v.y; z -= v.z; w -= v.w; return *this; }
+	Vector4& operator *=(Vector4 v) { x *= v.x; y *= v.y; z *= v.z; w *= v.w; return *this; }
+	Vector4& operator /=(Vector4 v) { x /= v.x; y /= v.y; z /= v.z; w /= v.w; return *this; }
+
+	Vector4& operator +=(f32 f) { x += f; y += f; z += f; w += f; return *this; }
+	Vector4& operator -=(f32 f) { x -= f; y -= f; z -= f; w -= f; return *this; }
+	Vector4& operator *=(f32 f) { x *= f; y *= f; z *= f; w *= f; return *this; }
+	Vector4& operator /=(f32 f) { x /= f; y /= f; z /= f; w /= f; return *this; }
 };
 
 static f32 Dot(Vector2 a, Vector2 b) { return a.Dot(b); }
