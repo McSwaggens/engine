@@ -84,10 +84,10 @@ struct Matrix4 {
 	static Matrix4 Perspective(f32 fov_y, f32 aspect, f32 near, f32 far) {
 		f32 f = 1.0f / Tan(fov_y / 2.0f);
 		return Matrix4(
-			f/aspect, 0,  0,                       0,
-			0,       -f,  0,                       0,
-			0,        0,  far/(near-far),         -1,
-			0,        0,  (near*far)/(near-far),   0
+			f/aspect, 0,   0,                        0,
+			0,        -f,  0,                        0,
+			0,        0,   far/(far-near),           1,
+			0,        0,   -(near*far)/(far-near),   0
 		);
 	}
 
@@ -96,10 +96,10 @@ struct Matrix4 {
 		Vector3 r = Cross(f, up).Normal();
 		Vector3 u = Cross(r, f);
 		return Matrix4(
-			 r.x,  u.x, -f.x, 0,
-			 r.y,  u.y, -f.y, 0,
-			 r.z,  u.z, -f.z, 0,
-			-Dot(r,eye), -Dot(u,eye), Dot(f,eye), 1
+			 r.x,  u.x,  f.x, 0,
+			 r.y,  u.y,  f.y, 0,
+			 r.z,  u.z,  f.z, 0,
+			-Dot(r, eye), -Dot(u, eye), -Dot(f, eye), 1
 		);
 	}
 
@@ -133,6 +133,19 @@ struct Matrix4 {
 			 0, 0, 1, 0,
 			 0, 0, 0, 1
 		);
+	}
+
+	static Matrix4 Translate(Vector3 v) {
+		return Matrix4(
+			1, 0, 0, 0,
+			0, 1, 0, 0,
+			0, 0, 1, 0,
+			v.x, v.y, v.z, 1
+		);
+	}
+
+	static Matrix4 Rotate(Vector3 v) {
+		return RotateZ(v.z) * RotateY(v.y) * RotateX(v.x);
 	}
 };
 
