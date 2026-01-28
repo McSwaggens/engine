@@ -118,6 +118,11 @@ static void Write(OutputBuffer* buffer, f64 f) {
 	// @FixMe: This really isn't that great, but it's good enough for now.
 	Write(buffer, (s64)f);
 	buffer->Write('.');
-	Write(buffer, (s64)Abs((f-(s64)f) * Pow(10, 9)));
+	s64 frac = (s64)Abs((f-(s64)f) * Pow(10, 9));
+	// Pad with leading zeros (9 digits)
+	for (s64 threshold = 100000000; threshold > 1; threshold /= 10) {
+		if (frac < threshold) buffer->Write('0');
+	}
+	Write(buffer, frac);
 }
 
