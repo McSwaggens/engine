@@ -20,7 +20,9 @@
 #include "vk_helper.cc"
 #include "gpu_buffer.cc"
 #include "command_buffer.cc"
+#include "engine.cc"
 
+#include "engine.h"
 #include "vk_helper.h"
 #include "vector.h"
 #include "matrix.h"
@@ -30,8 +32,9 @@
 #include "fixed_allocator.h"
 #include "device.h"
 #include "command_buffer.h"
+#include "camera.h"
+#include "keyboard.h"
 
-static Window window;
 static Swapchain swapchain;
 static VkShaderModule vert;
 static VkShaderModule frag;
@@ -69,7 +72,12 @@ struct Frame {
 static VkSemaphore* image_acquired_semaphores = null;
 static VkSemaphore* render_finished_semaphores = null;
 static u32 swapchain_image_count = 0;
-
+static Camera camera = {
+	.position = Vector3(0, 0, -3),
+	.orientation = Quaternion(),
+	.aspect_ratio = 1.0f,
+	.fov_radians = 90.0 / 360.0 * Math::TAU,
+};
 
 static Frame frames[INFLIGHT_FRAME_COUNT] = { };
 
@@ -83,6 +91,10 @@ static f64 current_time = 0.0;
 static u64 time_us = 0;
 static u64 init_time_us = 0;
 static u64 fps = 0;
+static f32 delta_time = 0;
+static f64 last_frame_time = 0.0;
+static f64 last_second_time = 0.0;
+static u64 last_second_frame_counter = 0;
 
 static void InitTime() {
 	init_time_us = GetTimeMicroseconds();
@@ -92,6 +104,8 @@ static void InitTime() {
 static void UpdateTime() {
 	time_us = GetTimeMicroseconds();
 	current_time = (time_us - init_time_us) / 1'000'000.0;
+	delta_time = current_time - last_frame_time;
+	last_frame_time = current_time;
 }
 
 static VkShaderModule LoadShader(String path) {
@@ -348,7 +362,7 @@ static void CreateGraphicsPipeline() {
 		.polygonMode = VK_POLYGON_MODE_FILL,
 		.lineWidth = 1.0,
 		.cullMode = VK_CULL_MODE_BACK_BIT,
-		.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
+		.frontFace = VK_FRONT_FACE_CLOCKWISE,
 
 		.depthBiasEnable         = false,
 		.depthBiasConstantFactor = 0.0,
@@ -571,16 +585,13 @@ static void UpdateUbo(Frame* frame) {
 	GpuBuffer* buffer = &frame->uniform_buffer;
 	Ubo* ubo = (Ubo*)buffer->Map();
 
-	f32 aspect = (f32)swapchain.extent.width / (f32)swapchain.extent.height;
 	f32 angle = (f32)current_time;
-
 	Matrix4 model = Matrix4::RotateY(angle) * Matrix4::RotateX(angle * 0.5f);
-	Matrix4 view = Matrix4::LookAt(Vector3(0, 0, 3), Vector3(0, 0, 0), Vector3(0, 1, 0));
-	Matrix4 proj = Matrix4::Perspective(90.0 / 360.0 * Math::TAU , aspect, 0.1f, 100.0f);
+	Matrix4 vp = camera.GenerateVP(0.1f, 100.0f);
 
 	*ubo = {
 		.time = (f32)current_time,
-		.mvp  = proj * view * model,
+		.mvp  = vp * model,
 	};
 
 	buffer->Unmap();
@@ -608,7 +619,7 @@ static void DestroyImageSemaphores() {
 static void RecreateSwapchain() {
 	device.WaitIdle();
 	DestroyImageSemaphores();
-	swapchain.Reload(&window, renderpass);
+	swapchain.Reload(&Engine::window, renderpass);
 	CreateImageSemaphores();
 }
 
@@ -664,10 +675,6 @@ static bool DrawFrame(Frame* frame) {
 	return false;
 }
 
-f64 last_frame_time = current_time;
-f64 last_second_time = current_time;
-u64 last_second_frame_counter = 0;
-
 static void PrintFps() {
 	if (current_time - last_second_time >= 1.0) {
 		last_second_time = current_time;
@@ -676,8 +683,23 @@ static void PrintFps() {
 		last_second_frame_counter = frame_counter;
 
 		LogVar(fps);
+		LogVar(delta_time);
 	}
+}
 
+static void Update() {
+	Vector3 translation;
+	f32 speed = 1;
+
+	if (Keyboard::IsDown(Key::LeftShift)) speed *= 2;
+	if (Keyboard::IsDown(Key::D))     translation.x += 1;
+	if (Keyboard::IsDown(Key::A))     translation.x -= 1;
+	if (Keyboard::IsDown(Key::W))     translation.z += 1;
+	if (Keyboard::IsDown(Key::S))     translation.z -= 1;
+	if (Keyboard::IsDown(Key::Space)) translation.y += 1;
+	if (Keyboard::IsDown(Key::Z))     translation.y -= 1;
+
+	camera.Translate(translation * speed * delta_time);
 }
 
 int main(int argc, char** argv) {
@@ -687,15 +709,15 @@ int main(int argc, char** argv) {
 
 	InitTime();
 	InitWindowSystem();
-	window = CreateWindow();
+	Engine::window = CreateWindow();
 	vk_helper.Init();
-	window.InitSurface();
+	Engine::window.InitSurface();
 
-	VkPhysicalDevice physical_device = vk_helper.FindPhysicalDevice(&window);
-	QueueFamilyTable qft = QueryQueueFamilyTable(physical_device, &window);
+	VkPhysicalDevice physical_device = vk_helper.FindPhysicalDevice(&Engine::window);
+	QueueFamilyTable qft = QueryQueueFamilyTable(physical_device, &Engine::window);
 
 	device.Init(physical_device, qft);
-	swapchain.Init(&window);
+	swapchain.Init(&Engine::window);
 
 	vert = LoadShader("vert.spv");
 	frag = LoadShader("frag.spv");
@@ -721,20 +743,26 @@ int main(int argc, char** argv) {
 
 	UpdateTime();
 
-	while (!window.ShouldClose()) {
+	while (!Engine::window.ShouldClose()) {
 		Frame* frame = &frames[frame_counter % INFLIGHT_FRAME_COUNT];
 
 		UpdateTime();
-		window.Update();
+		Engine::window.Update();
 
-		// Skip frames when window is minimized or has zero size
-		if (window.width == 0 || window.height == 0)
+		Keyboard::Update();
+
+		// Skip frames when Engine::window is minimized or has zero size
+		if (Engine::window.width == 0 || Engine::window.height == 0)
 			continue;
 
-		if (window.has_size_changed)
+		if (Engine::window.has_size_changed)
 			RecreateSwapchain();
 
 		PrintFps();
+
+		camera.aspect_ratio = (f32)swapchain.extent.width / (f32)swapchain.extent.height;
+
+		Update();
 
 		if (DrawFrame(frame)) {
 			RecreateSwapchain();
@@ -742,7 +770,6 @@ int main(int argc, char** argv) {
 		}
 
 		frame_counter++;
-		last_frame_time = current_time;
 		standard_output_buffer.Flush();
 	}
 
@@ -769,7 +796,7 @@ int main(int argc, char** argv) {
 	vkDestroyShaderModule(device.logical_device, frag, null);
 
 	swapchain.Destroy();
-	window.Destroy();
+	Engine::window.Destroy();
 	device.Destroy();
 	vk_helper.Destroy();
 	glfwTerminate();
