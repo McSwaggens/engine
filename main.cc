@@ -78,7 +78,7 @@ static VkSemaphore* render_finished_semaphores = null;
 static u32 swapchain_image_count = 0;
 static Camera camera = {
 	.position = Vector3(0, 0, -3),
-	.orientation = Quaternion(),
+	.rotation = Vector3(0, 0, 0),
 	.aspect_ratio = 1.0f,
 	.fov_radians = 90.0 / 360.0 * Math::TAU,
 };
@@ -687,9 +687,10 @@ static void Update() {
 	PrintFps();
 
 	Vector3 translation = 0;
-	f32 speed = 5;
+	f32 movement_speed = 5;
+	f32 mouse_speed = 5;
 
-	if (Keyboard::IsDown(Key::LeftShift)) speed *= 2;
+	if (Keyboard::IsDown(Key::LeftShift)) movement_speed *= 2;
 	if (Keyboard::IsDown(Key::D))     translation.x += 1;
 	if (Keyboard::IsDown(Key::A))     translation.x -= 1;
 	if (Keyboard::IsDown(Key::W))     translation.z += 1;
@@ -697,12 +698,14 @@ static void Update() {
 	if (Keyboard::IsDown(Key::Space)) translation.y += 1;
 	if (Keyboard::IsDown(Key::Z))     translation.y -= 1;
 
+	camera.rotation += Vector3(Mouse::movement.y, Mouse::movement.x, 0) * mouse_speed * delta_time;
+
 	if (Mouse::movement.Length() != 0)
 		Log(Mouse::movement);
 
 	Mouse::SetLocked(Engine::window.is_focused);
 
-	camera.Translate(translation * speed * delta_time);
+	camera.Translate(translation * movement_speed * delta_time);
 }
 
 static void InitializeFrames() {

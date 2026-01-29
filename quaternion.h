@@ -23,6 +23,22 @@ struct Quaternion {
 		);
 	}
 
+	static Quaternion FromEuler(f32 pitch, f32 yaw, f32 roll) {
+		f32 cp = Cos(pitch * 0.5f), sp = Sin(pitch * 0.5f);
+		f32 cy = Cos(yaw   * 0.5f), sy = Sin(yaw   * 0.5f);
+		f32 cr = Cos(roll  * 0.5f), sr = Sin(roll  * 0.5f);
+		return Quaternion(
+			cy*cp*cr + sy*sp*sr,
+			cy*sp*cr + sy*cp*sr,
+			sy*cp*cr - cy*sp*sr,
+			cy*cp*sr - sy*sp*cr
+		);
+	}
+
+	static Quaternion FromEuler(Vector3 angles) {
+		return FromEuler(angles.x, angles.y, angles.z);
+	}
+
 	f32 Dot(Quaternion q) { return r*q.r + i*q.i + j*q.j + k*q.k; }
 	f32 Length() { return Sqrt(r*r + i*i + j*j + k*k); }
 	Quaternion Normal() { f32 len = Length(); return Quaternion(r/len, i/len, j/len, k/len); }
@@ -44,6 +60,8 @@ struct Quaternion {
 			r*q.k + i*q.j - j*q.i + k*q.r
 		);
 	}
+
+	Quaternion& operator *=(Quaternion q) { *this = *this * q; return *this; }
 
 	Vector3 Rotate(Vector3 v) {
 		Quaternion result = *this * Quaternion(0, v.x, v.y, v.z) * Conjugate();
