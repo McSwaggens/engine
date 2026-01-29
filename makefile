@@ -22,9 +22,9 @@ program_xxx: *.cc *.h shaders
 		-DLINUX=$(IS_LINUX) \
 		-o program
 
-shaders: *.glsl
-	glslc -fshader-stage=vertex   vert.glsl -o vert.spv
-	glslc -fshader-stage=fragment frag.glsl -o frag.spv
+shaders: vert.hlsl frag.hlsl
+	dxc -spirv -T vs_6_0 -E main -Fo vert.spv vert.hlsl
+	dxc -spirv -T ps_6_0 -E main -Fo frag.spv frag.hlsl
 
 run: program_xxx shaders
 	pkill program || true
