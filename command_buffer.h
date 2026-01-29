@@ -6,6 +6,8 @@
 #include "vk_helper.h"
 #include "vector.h"
 
+#include "gpu_buffer.h"
+
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_core.h>
 
@@ -85,9 +87,10 @@ struct CommandBuffer {
 		vkCmdSetScissor(handle, 0, 1, &scissor);
 	}
 
-	void BindVertexBuffers(VkBuffer* buffers, VkDeviceSize* offsets, u32 count = 1) {
+	void BindVertexBuffer(GpuBuffer buffer, u32 binding, u64 offset = 0) {
 		Assert(recording);
-		vkCmdBindVertexBuffers(handle, 0, count, buffers, offsets);
+		VkDeviceSize offsets[1] = { offset };
+		vkCmdBindVertexBuffers(handle, binding, 1, &buffer.buffer, offsets);
 	}
 
 	void BindIndexBuffer(VkBuffer buffer, VkDeviceSize offset, VkIndexType index_type) {
@@ -95,7 +98,7 @@ struct CommandBuffer {
 		vkCmdBindIndexBuffer(handle, buffer, offset, index_type);
 	}
 
-	void BindDescriptorSets(VkPipelineBindPoint bind_point, VkPipelineLayout layout, u32 first_set, u32 count, VkDescriptorSet* sets) {
+	void BindDescriptorSets(VkPipelineBindPoint bind_point, VkPipelineLayout layout, u32 first_set, VkDescriptorSet* sets, u32 count) {
 		Assert(recording);
 		vkCmdBindDescriptorSets(handle, bind_point, layout, first_set, count, sets, 0, null);
 	}

@@ -38,6 +38,7 @@ static f32 FMod(f32 x, f32 y)       { return __builtin_fmod(x, y);     }
 static f32 Max(f32 a, f32 b)        { return __builtin_fmax(a, b);     }
 static f32 Min(f32 a, f32 b)        { return __builtin_fmin(a, b);     }
 
+static u64 Max(unsigned long int a, unsigned long int b) { return a >= b ? a : b; };
 static u64 Max(u64 a, u64 b) { return a >= b ? a : b; };
 static u32 Max(u32 a, u32 b) { return a >= b ? a : b; };
 static u16 Max(u16 a, u16 b) { return a >= b ? a : b; };
@@ -47,6 +48,11 @@ static s64 Max(s64 a, s64 b) { return a >= b ? a : b; };
 static s32 Max(s32 a, s32 b) { return a >= b ? a : b; };
 static s16 Max(s16 a, s16 b) { return a >= b ? a : b; };
 static s8  Max(s8  a, s8  b) { return a >= b ? a : b; };
+
+template<typename A, typename B, typename C, typename... Rest>
+static auto Max(A a, B b, C c, Rest... rest) {
+	return Max(Max(a, b), c, rest...);
+}
 
 static u64 Min(u64 a, u64 b) { return a <= b ? a : b; };
 static u32 Min(u32 a, u32 b) { return a <= b ? a : b; };

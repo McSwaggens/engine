@@ -1,4 +1,5 @@
 #include "general.h"
+#include <vulkan/vulkan_core.h>
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -42,8 +43,8 @@ static VkShaderModule frag;
 static VkRenderPass renderpass;
 static VkPipelineLayout pipeline_layout;
 static VkPipeline pipeline;
-static GpuBuffer vertex_buffer;
-static GpuBuffer index_buffer;
+static GpuBuffer cube_vertex_buffer;
+static GpuBuffer cube_index_buffer;
 static VkDescriptorSetLayout descriptor_set_layout;
 static VkDescriptorPool descriptor_pool;
 
@@ -51,12 +52,13 @@ static const u32 INFLIGHT_FRAME_COUNT = 2;
 
 struct Ubo {
 	f32 time;
-	alignas(16) Matrix4 mvp;
+	alignas(16) Matrix4 projection;
 };
 
 struct Frame {
 	CommandBuffer   command_buffer;
 	VkFence         inflight_fence;
+	GpuBuffer       instance_buffer;
 	GpuBuffer       uniform_buffer;
 	VkDescriptorSet uniform_descriptor_set;
 
@@ -64,6 +66,7 @@ struct Frame {
 		command_buffer.Destroy();
 		vkDestroyFence(device.logical_device, inflight_fence, null);
 		uniform_buffer.Destroy();
+		instance_buffer.Destroy();
 	}
 };
 
@@ -81,11 +84,6 @@ static Camera camera = {
 };
 
 static Frame frames[INFLIGHT_FRAME_COUNT] = { };
-
-struct Vertex {
-	Vector3 position;
-	Vector3 color;
-};
 
 static u64 frame_counter = 0;
 static f64 current_time = 0.0;
@@ -130,7 +128,16 @@ static VkShaderModule LoadShader(String path) {
 	return module;
 }
 
-static void InitVertexBuffer() {
+struct Vertex {
+	Vector3 position;
+	Vector3 color;
+};
+
+struct CubeInstance {
+	Vector3 position;
+};
+
+static void InitCubeVertexBuffer() {
 	Vertex vertices[24] = {
 		// Front face (red)
 		{ .position = { -0.5f, -0.5f,  0.5f }, .color = { 1, 0, 0 } },
@@ -174,15 +181,15 @@ static void InitVertexBuffer() {
 	};
 
 	GpuBuffer staging_buffer;
-	staging_buffer = CreateBuffer(Max((u64)sizeof(vertices), (u64)sizeof(indices)), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-	vertex_buffer  = CreateBuffer(sizeof(vertices), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-	index_buffer   = CreateBuffer(sizeof(indices),  VK_BUFFER_USAGE_INDEX_BUFFER_BIT  | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	staging_buffer = CreateBuffer(Max(sizeof(vertices), sizeof(indices)), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	cube_vertex_buffer  = CreateBuffer(sizeof(vertices), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	cube_index_buffer   = CreateBuffer(sizeof(indices),  VK_BUFFER_USAGE_INDEX_BUFFER_BIT  | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
 	staging_buffer.Upload(vertices, sizeof(vertices));
-	CopyBuffer(vertex_buffer, staging_buffer, sizeof(vertices));
+	CopyBuffer(cube_vertex_buffer, staging_buffer, sizeof(vertices));
 
 	staging_buffer.Upload(indices, sizeof(indices));
-	CopyBuffer(index_buffer, staging_buffer, sizeof(indices));
+	CopyBuffer(cube_index_buffer, staging_buffer, sizeof(indices));
 
 	staging_buffer.Destroy();
 }
@@ -218,20 +225,19 @@ static void CreateRenderPass() {
 	};
 
 	VkAttachmentReference color_attachment_ref = {
-		.attachment = 0,
-		.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		.attachment = 0, .layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 	};
 
 	VkAttachmentReference depth_attachment_ref = {
-		.attachment = 1,
-		.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+		.attachment = 1, .layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
 	};
 
 	VkSubpassDescription subpass = {
 		.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
 
-		.pColorAttachments = &color_attachment_ref,
+		.pColorAttachments    = &color_attachment_ref,
 		.colorAttachmentCount = 1,
+
 		.pDepthStencilAttachment = &depth_attachment_ref,
 	};
 
@@ -296,36 +302,26 @@ static void CreateGraphicsPipeline() {
 		.dynamicStateCount = sizeof(dynamic_states) / sizeof(*dynamic_states),
 	};
 
-	VkVertexInputBindingDescription bind = {
-		.binding   = 0,
-		.stride    = sizeof(Vertex),
-		.inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+	VkVertexInputBindingDescription bind[] = {
+		{ .binding = 0, .stride = sizeof(Vertex),       .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,   },
+		{ .binding = 1, .stride = sizeof(CubeInstance), .inputRate = VK_VERTEX_INPUT_RATE_INSTANCE, },
 	};
 
-	VkVertexInputAttributeDescription vertex_attributes[2] = {
-		{
-			.binding = 0,
-			.location = 0,
-			.format = VK_FORMAT_R32G32B32_SFLOAT,
-			.offset = offsetof(Vertex, position),
-		},
-		{
-			.binding = 0,
-			.location = 1,
-			.format = VK_FORMAT_R32G32B32_SFLOAT,
-			.offset = offsetof(Vertex, color),
-		}
+	VkVertexInputAttributeDescription vertex_attributes[] = {
+		{ .binding = 0, .location = 0, .format = VK_FORMAT_R32G32B32_SFLOAT, .offset = offsetof(Vertex, position), },
+		{ .binding = 0, .location = 1, .format = VK_FORMAT_R32G32B32_SFLOAT, .offset = offsetof(Vertex, color), },
+		{ .binding = 1, .location = 2, .format = VK_FORMAT_R32G32B32_SFLOAT, .offset = offsetof(CubeInstance, position), }
 	};
 
 	// Vertex Input
 	VkPipelineVertexInputStateCreateInfo vertex_input_info = {
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
 
-		.pVertexBindingDescriptions    = &bind,
-		.vertexBindingDescriptionCount = 1,
+		.pVertexBindingDescriptions    = bind,
+		.vertexBindingDescriptionCount = 2,
 
 		.pVertexAttributeDescriptions    = vertex_attributes,
-		.vertexAttributeDescriptionCount = 2,
+		.vertexAttributeDescriptionCount = 3,
 	};
 
 	// Input Assembly
@@ -490,12 +486,13 @@ static void RecordCommandBuffer(Frame* frame, u32 image_index) {
 
 	frame->command_buffer.BeginRenderPass(&renderpass_begin_info);
 	frame->command_buffer.BindPipeline(VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
-	frame->command_buffer.SetViewport(Vector2(0.0f), Vector2((f32)swapchain.extent.width, (f32)swapchain.extent.height), Vector2(0.0f, 1.0f));
-	frame->command_buffer.SetScissor(Vector2(0.0f), Vector2((f32)swapchain.extent.width, (f32)swapchain.extent.height));
-	frame->command_buffer.BindVertexBuffers(&vertex_buffer.buffer, offsets);
-	frame->command_buffer.BindIndexBuffer(index_buffer.buffer, 0, VK_INDEX_TYPE_UINT16);
-	frame->command_buffer.BindDescriptorSets(VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &frame->uniform_descriptor_set);
-	frame->command_buffer.DrawIndexed(36, 1, 0, 0, 0);
+	frame->command_buffer.SetViewport(Vector2(0.0f), Vector2(swapchain.extent.width, swapchain.extent.height), Vector2(0.0f, 1.0f));
+	frame->command_buffer.SetScissor(Vector2(0.0f), Vector2(swapchain.extent.width, swapchain.extent.height));
+	frame->command_buffer.BindVertexBuffer(cube_vertex_buffer,     0);
+	frame->command_buffer.BindVertexBuffer(frame->instance_buffer, 1);
+	frame->command_buffer.BindIndexBuffer(cube_index_buffer.buffer, 0, VK_INDEX_TYPE_UINT16);
+	frame->command_buffer.BindDescriptorSets(VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, &frame->uniform_descriptor_set, 1);
+	frame->command_buffer.DrawIndexed(36, 2, 0, 0, 0);
 	frame->command_buffer.EndRenderPass();
 
 	frame->command_buffer.End();
@@ -582,19 +579,18 @@ static void CreateUbo() {
 	}
 }
 
-static void UpdateUbo(Frame* frame) {
-	GpuBuffer* buffer = &frame->uniform_buffer;
-	Ubo* ubo = (Ubo*)buffer->Map();
-
-	f32 angle = (f32)current_time;
-	Matrix4 model = Matrix4::RotateY(angle) * Matrix4::RotateX(angle * 0.5f);
-
+static void UploadCubeData(Frame* frame) {
+	Ubo* ubo = (Ubo*)frame->uniform_buffer.Map();
 	*ubo = {
 		.time = (f32)current_time,
-		.mvp  = camera.GenerateVP(0.1f, 100.0f) * model,
+		.projection  = camera.GenerateVP(0.1f, 100.0f),
 	};
+	frame->uniform_buffer.Unmap();
 
-	buffer->Unmap();
+	CubeInstance* instances = (CubeInstance*)frame->instance_buffer.Map();
+	instances[0] = { { 0, 0, 0 } };
+	instances[1] = { { 5, 5, 5 } };
+	frame->instance_buffer.Unmap();
 }
 
 static void CreateImageSemaphores() {
@@ -642,7 +638,7 @@ static bool DrawFrame(Frame* frame) {
 	VkPipelineStageFlags wait_stages[]       = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
 	VkSemaphore          signal_semaphores[] = { render_finished_semaphores[image.Get()] };
 
-	UpdateUbo(frame);
+	UploadCubeData(frame);
 
 	VkSubmitInfo submit_info = {
 		.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
@@ -709,6 +705,15 @@ static void Update() {
 	camera.Translate(translation * speed * delta_time);
 }
 
+static void InitializeFrames() {
+	for (u32 i = 0; i < INFLIGHT_FRAME_COUNT; i++) {
+		Frame* frame = &frames[i];
+		frame->inflight_fence = device.CreateFence(true);
+		frame->command_buffer = device.CreateCommandBuffer();
+		frame->instance_buffer = CreateBuffer(sizeof(CubeInstance) * 2, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	}
+}
+
 int main(int argc, char** argv) {
 	Print("Initializing...\n");
 
@@ -732,7 +737,7 @@ int main(int argc, char** argv) {
 
 	CreateDescriptorPool();
 
-	InitVertexBuffer();
+	InitCubeVertexBuffer();
 	CreateUbo();
 
 	CreateRenderPass();
@@ -740,10 +745,7 @@ int main(int argc, char** argv) {
 
 	swapchain.InitFrameBuffers(renderpass);
 
-	for (u32 i = 0; i < INFLIGHT_FRAME_COUNT; i++) {
-		frames[i].inflight_fence = device.CreateFence(true);
-		frames[i].command_buffer = device.CreateCommandBuffer();
-	}
+	InitializeFrames();
 
 	CreateImageSemaphores();
 
@@ -792,8 +794,8 @@ int main(int argc, char** argv) {
 	vkDestroyDescriptorSetLayout(device.logical_device, descriptor_set_layout, null);
 	vkDestroyDescriptorPool(device.logical_device, descriptor_pool, null);
 
-	index_buffer.Destroy();
-	vertex_buffer.Destroy();
+	cube_index_buffer.Destroy();
+	cube_vertex_buffer.Destroy();
 
 	vkDestroyRenderPass(device.logical_device, renderpass, null);
 	vkDestroyPipelineLayout(device.logical_device, pipeline_layout, null);
